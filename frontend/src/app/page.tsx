@@ -335,19 +335,6 @@ export default function Dashboard() {
       });
   };
 
-  const getStatusColor = (checks: Check[]) => {
-    if (!Array.isArray(checks)) return { text: "UNKNOWN", class: "border-[#737373]/20 bg-[#737373]/5 text-[#A3A3A3]" };
-    const fails = checks.filter((c) => c.status === "fail");
-    const unverifiable = checks.filter((c) => c.status === "unverifiable");
-    if (fails.length > 0) {
-      return { text: "NON-COMPLIANT", class: "border-[#DC2626]/20 bg-[#DC2626]/5 text-[#EF4444]" };
-    }
-    if (unverifiable.length > 0) {
-      return { text: "WARNING (UNVERIFIABLE)", class: "border-[#F59E0B]/20 bg-[#F59E0B]/5 text-[#F59E0B]" };
-    }
-    return { text: "COMPLIANT", class: "border-[#10B981]/20 bg-[#10B981]/5 text-[#10B981]" };
-  };
-
   if (authChecking) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0A0A0A] text-[#EDEDED] font-mono text-xs">
@@ -613,6 +600,27 @@ export default function Dashboard() {
     );
   }
 
+  // Field dictionary helper for structured rendering
+  const fieldMap: Record<string, string | null> = {};
+  if (selectedScan && Array.isArray(selectedScan.fields)) {
+    for (const f of selectedScan.fields) {
+      fieldMap[f.field_name] = f.field_value;
+    }
+  }
+
+  const failedChecks = (selectedScan?.checks || []).filter((c) => c.status === "fail");
+  const unverifiableChecks = (selectedScan?.checks || []).filter((c) => c.status === "unverifiable");
+
+  let overallVerdict = "COMPLIANT";
+  let verdictColorClass = "border-[#10B981] text-[#10B981] bg-[#10B981]/10";
+  if (failedChecks.length > 0) {
+    overallVerdict = "NON-COMPLIANT";
+    verdictColorClass = "border-[#DC2626] text-[#EF4444] bg-[#DC2626]/10";
+  } else if (unverifiableChecks.length > 0) {
+    overallVerdict = "REQUIRES VERIFICATION";
+    verdictColorClass = "border-[#F59E0B] text-[#F59E0B] bg-[#F59E0B]/10";
+  }
+
   // Main Authenticated Workspace with Sidebar
   return (
     <div className="flex min-h-screen bg-[#0A0A0A] text-[#EDEDED]">
@@ -857,7 +865,7 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Right Side: Compliance Report Viewer */}
+          {/* Right Side: Structured Compliance Report Viewer */}
           <section className="col-span-8 bg-[#070707] flex flex-col h-full relative overflow-y-auto">
             {scanning ? (
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-6">
@@ -908,26 +916,26 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : selectedScan ? (
-              // Full Compliance Report View
-              <div className="p-8 space-y-8">
-                {/* Header Panel */}
-                <div className="flex items-center justify-between border-b border-[#262626] pb-6">
-                  <div>
-                    <h2 className="text-xl font-bold tracking-tight text-[#EDEDED] font-mono">
-                      Statutory Compliance Report
-                    </h2>
-                    <p className="text-xs text-[#737373] mt-1 font-mono">
-                      Scan ID: {selectedScan.id} | Audited for: <span className="text-[#EDEDED] font-bold">{currentUser.full_name}</span> | {new Date(selectedScan.created_at).toLocaleString()}
-                    </p>
-                  </div>
+              // 4-Section Product Compliance Report
+              <div className="p-8 space-y-6 font-mono text-xs">
+                {/* Main Header Box with Export Button */}
+                <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg p-6 space-y-4 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-[#262626] pb-4">
+                    <div>
+                      <h2 className="text-lg font-bold text-[#EDEDED] tracking-tight">
+                        PRODUCT COMPLIANCE REPORT
+                      </h2>
+                      <p className="text-[11px] text-[#737373] mt-0.5">
+                        Statutory audit record generated for consumer protection under Legal Metrology &amp; FSSAI.
+                      </p>
+                    </div>
 
-                  <div className="flex gap-3">
                     <a
                       href={`${API_BASE}${selectedScan.report_pdf_url}`}
                       download
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-2 px-3 py-2 border border-[#262626] bg-[#0F0F0F] hover:bg-[#1A1A1A] transition text-xs font-mono text-[#EDEDED] rounded"
+                      className="flex items-center gap-2 px-3.5 py-2 border border-[#10B981]/30 bg-[#10B981]/10 hover:bg-[#10B981]/20 transition text-xs font-bold text-[#10B981] rounded-lg shadow"
                     >
                       <svg
                         className="w-4 h-4"
@@ -945,361 +953,263 @@ export default function Dashboard() {
                       Export PDF Report
                     </a>
                   </div>
-                </div>
 
-                {/* Status & Authenticity Overview */}
-                <div className="grid grid-cols-3 gap-4">
-                  {/* 1. Overall Status Card */}
-                  {(() => {
-                    const status = getStatusColor(selectedScan.checks);
-                    return (
-                      <div
-                        className={`border p-4 rounded flex flex-col justify-between h-28 ${status.class}`}
-                      >
-                        <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#737373]">
-                          Statutory Audit Status
-                        </span>
-                        <span className="text-lg font-bold font-mono tracking-tight">
-                          {status.text}
-                        </span>
+                  {/* Header Meta: Report ID, Date & Time, Product Image */}
+                  <div className="grid grid-cols-12 gap-4 items-center">
+                    <div className="col-span-8 space-y-2">
+                      <div className="flex">
+                        <span className="w-32 text-[#737373]">Report ID:</span>
+                        <span className="text-[#EDEDED] font-bold">{selectedScan.id}</span>
                       </div>
-                    );
-                  })()}
-
-                  {/* 2. Authenticity Score Card */}
-                  <div
-                    className={`border p-4 rounded flex flex-col justify-between h-28 ${
-                      selectedScan.authenticity_score >= 70.0
-                        ? "border-[#10B981]/20 bg-[#10B981]/5 text-[#10B981]"
-                        : "border-[#DC2626]/20 bg-[#DC2626]/5 text-[#EF4444]"
-                    }`}
-                  >
-                    <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#737373]">
-                      Image Authenticity Score
-                    </span>
-                    <span className="text-lg font-bold font-mono tracking-tight">
-                      {selectedScan.authenticity_score}%
-                    </span>
-                  </div>
-
-                  {/* 3. Package Classification Card */}
-                  <div className="border border-[#262626] bg-[#0F0F0F] p-4 rounded flex flex-col justify-between h-28 text-[#EDEDED]">
-                    <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-[#737373]">
-                      Target Object Class
-                    </span>
-                    <span className="text-lg font-bold font-mono tracking-tight truncate capitalize">
-                      {selectedScan.object_classification ? selectedScan.object_classification.replace("_", " ") : "Retail Package"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Prominent Statutory Failure Summary Banner */}
-                {(() => {
-                  const failedChecks = (selectedScan.checks || []).filter(
-                    (c) => c.status === "fail"
-                  );
-                  if (failedChecks.length === 0) {
-                    return (
-                      <div className="border border-[#10B981]/30 bg-[#10B981]/10 rounded p-4 flex items-start gap-3">
-                        <div className="text-[#10B981] font-bold text-base leading-none mt-0.5">
-                          ✓
-                        </div>
-                        <div className="space-y-1">
-                          <div className="text-xs font-mono font-bold text-[#10B981]">
-                            Fully Compliant with Statutory Regulations
-                          </div>
-                          <p className="text-[11px] font-mono text-[#A3A3A3]">
-                            All statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, Fiber/Size, Food Safety) verified successfully.
-                          </p>
-                        </div>
+                      <div className="flex">
+                        <span className="w-32 text-[#737373]">Date &amp; Time:</span>
+                        <span className="text-[#EDEDED]">{new Date(selectedScan.created_at).toLocaleString()}</span>
                       </div>
-                    );
-                  }
-
-                  const severityWeight: Record<string, number> = {
-                    CRITICAL: 3,
-                    MAJOR: 2,
-                    MINOR: 1
-                  };
-                  const sortedFails = [...failedChecks].sort(
-                    (a, b) =>
-                      (severityWeight[b.severity || "MAJOR"] || 2) -
-                      (severityWeight[a.severity || "MAJOR"] || 2)
-                  );
-                  const topFails = sortedFails.slice(0, 3);
-                  const remainingFails = sortedFails.length - topFails.length;
-
-                  return (
-                    <div className="border border-[#DC2626]/40 bg-[#DC2626]/10 rounded p-4 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="text-xs font-mono font-bold text-[#EF4444] flex items-center gap-2">
-                          <svg
-                            className="w-4 h-4 shrink-0"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                            />
-                          </svg>
-                          Non-Compliance Summary: {failedChecks.length} Statutory Violation
-                          {failedChecks.length > 1 ? "s" : ""} Found
-                        </div>
-                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#DC2626]/20 text-[#EF4444] uppercase">
-                          Action Required
-                        </span>
+                      <div className="flex">
+                        <span className="w-32 text-[#737373]">Channel / Mode:</span>
+                        <span className="text-[#EDEDED] capitalize">{selectedScan.input_type.toUpperCase()} ({selectedScan.object_classification})</span>
                       </div>
-
-                      <div className="space-y-1.5 pt-1">
-                        {topFails.map((fc) => (
-                          <div
-                            key={fc.rule_id}
-                            className="text-xs font-mono text-[#EDEDED] flex items-start gap-2 bg-[#0A0A0A]/70 p-2.5 rounded border border-[#262626]"
-                          >
-                            <span className="text-[#EF4444] font-bold shrink-0">
-                              {fc.rule_citation}:
-                            </span>
-                            <span className="text-[#C2C2C2] leading-snug">
-                              {fc.explanation}
-                            </span>
-                          </div>
-                        ))}
-                        {remainingFails > 0 && (
-                          <div className="text-[11px] font-mono text-[#A3A3A3] pt-1 italic">
-                            + {remainingFails} additional statutory violation
-                            {remainingFails > 1 ? "s" : ""} (see complete checklist table below)
-                          </div>
-                        )}
+                      <div className="flex">
+                        <span className="w-32 text-[#737373]">Audited For:</span>
+                        <span className="text-[#10B981] font-bold">{currentUser.full_name}</span>
                       </div>
                     </div>
-                  );
-                })()}
 
-                {/* Authenticity Maps */}
-                {selectedScan.authenticity_report && (
-                  <div className="space-y-4">
-                    <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                      Authenticity Verification
-                    </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* ELA Visual Map */}
-                      {selectedScan.authenticity_report.ela.ela_image_url ? (
-                        <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden flex flex-col">
-                          <div className="p-3 border-b border-[#262626] bg-[#151515] flex justify-between items-center text-xs font-mono">
-                            <span className="text-[#A3A3A3]">
-                              Error Level Analysis (ELA) Map
-                            </span>
-                            <span className="text-[#737373]">
-                              Var:{" "}
-                              {selectedScan.authenticity_report.ela.ela_variance.toFixed(1)}
-                            </span>
-                          </div>
+                    {/* Embedded Product Image */}
+                    <div className="col-span-4 border border-[#262626] bg-[#070707] rounded-lg p-2 flex flex-col items-center justify-center">
+                      {selectedScan.image_path ? (
+                        <div className="w-full">
                           <img
-                            src={`${API_BASE}${selectedScan.authenticity_report.ela.ela_image_url}`}
-                            alt="ELA Map"
-                            className="w-full aspect-video object-contain bg-black"
+                            src={`${API_BASE}${selectedScan.image_path}`}
+                            alt="Audited Product"
+                            className="w-full h-24 object-contain rounded bg-black"
                           />
+                          <span className="text-[10px] text-[#737373] text-center block mt-1">
+                            Product Image Capture
+                          </span>
                         </div>
                       ) : (
-                        <div className="border border-[#262626] bg-[#0F0F0F] rounded p-6 flex items-center justify-center text-xs font-mono text-[#737373] text-center">
-                          ELA analysis bypassed for digital listing URLs.
+                        <div className="h-24 flex items-center justify-center text-[11px] text-[#737373] text-center">
+                          E-Commerce Product Listing URL
                         </div>
                       )}
-
-                      {/* Statistics details */}
-                      <div className="border border-[#262626] bg-[#0F0F0F] rounded p-4 space-y-3 text-xs font-mono">
-                        <div className="border-b border-[#262626] pb-2 font-bold text-[#A3A3A3]">
-                          Image Forensics & Header Diagnostics
-                        </div>
-
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-[#737373]">EXIF Header Tags:</span>
-                            <span
-                              className={
-                                selectedScan.authenticity_report.exif.exif_present
-                                  ? "text-[#10B981]"
-                                  : "text-[#F59E0B]"
-                              }
-                            >
-                              {selectedScan.authenticity_report.exif.exif_present
-                                ? "Present"
-                                : "Missing / Stripped"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[#737373]">EXIF Editing Signatures:</span>
-                            <span
-                              className={
-                                selectedScan.authenticity_report.exif.editing_software_detected
-                                  ? "text-[#EF4444]"
-                                  : "text-[#10B981]"
-                              }
-                            >
-                              {selectedScan.authenticity_report.exif
-                                .editing_software_detected
-                                ? "Editing Tool Detected"
-                                : "Clean Camera Raw"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[#737373]">FFT Spectral Variance:</span>
-                            <span className="text-[#EDEDED]">
-                              {selectedScan.authenticity_report.fft.fft_variance.toFixed(1)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="pt-2 border-t border-[#262626] text-[10px] text-[#A3A3A3] leading-relaxed">
-                          <b>EXIF:</b> {selectedScan.authenticity_report.exif.details}
-                          <br />
-                          <b>FFT:</b> {selectedScan.authenticity_report.fft.details}
-                        </div>
-                      </div>
                     </div>
                   </div>
-                )}
+                </div>
 
-                {/* Extracted Declarations Table */}
-                <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                    Extracted Declarations
-                  </h3>
-                  <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden">
-                    <table className="w-full text-left border-collapse font-mono text-xs">
-                      <thead>
-                        <tr className="border-b border-[#262626] bg-[#151515] text-[#A3A3A3] font-bold">
-                          <th className="p-3">Statutory Field</th>
-                          <th className="p-3">Extracted Value</th>
-                          <th className="p-3">
-                            {selectedScan.input_type === "url" ||
-                            selectedScan.object_classification === "e-commerce_listing"
-                              ? "Extraction Confidence"
-                              : "OCR Confidence"}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#262626] text-[#EDEDED]">
-                        {(selectedScan.fields || []).map((field) => (
-                          <tr
-                            key={field.field_name}
-                            className="hover:bg-[#151515] transition"
-                          >
-                            <td className="p-3 font-bold text-[#A3A3A3]">
-                              {field.field_name
-                                ? field.field_name.replace("_", " ").toUpperCase()
-                              : ""}
+                {/* 1. PRODUCT INFORMATION */}
+                <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg overflow-hidden">
+                  <div className="p-3 bg-[#151515] border-b border-[#262626] font-bold text-[#EDEDED] flex justify-between">
+                    <span>1. PRODUCT INFORMATION</span>
+                    <span className="text-[11px] text-[#737373] font-normal">Standard Statutory Declarations</span>
+                  </div>
+
+                  <div className="divide-y divide-[#1F1F1F]">
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Product Name</span>
+                      <span className="col-span-8 text-[#EDEDED] font-bold">
+                        {fieldMap["generic_name"] || <i className="text-[#737373] font-normal">[Not Detected]</i>}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Manufacturer / Packer</span>
+                      <span className="col-span-8 text-[#EDEDED]">
+                        {fieldMap["manufacturer_name"] || fieldMap["importer_name"] || <i className="text-[#737373]">[Not Detected]</i>}
+                        {fieldMap["manufacturer_address"] && fieldMap["manufacturer_address"] !== fieldMap["manufacturer_name"] ? (
+                          <span className="text-[#A3A3A3] block text-[11px] mt-0.5">
+                            {fieldMap["manufacturer_address"]}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">MRP</span>
+                      <span className="col-span-8 text-[#EDEDED] font-bold">
+                        {fieldMap["mrp"] || <i className="text-[#737373] font-normal">[Not Detected]</i>}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Net Quantity</span>
+                      <span className="col-span-8 text-[#EDEDED] font-bold">
+                        {fieldMap["net_quantity"] || <i className="text-[#737373] font-normal">[Not Detected]</i>}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Batch / Lot Number</span>
+                      <span className="col-span-8 text-[#EDEDED]">
+                        {fieldMap["batch_no"] || fieldMap["lot_no"] || "Declared on Batch Stamp"}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Dates (Mfg / Expiry)</span>
+                      <span className="col-span-8 text-[#EDEDED]">
+                        Mfg: {fieldMap["mfg_date"] || "Not Declared"}
+                        {fieldMap["expiry_date"] || fieldMap["best_before_date"] ? (
+                          <span className="ml-3 text-[#A3A3A3]">
+                            | Exp/Best Before: {fieldMap["expiry_date"] || fieldMap["best_before_date"]}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+
+                    <div className="p-3 grid grid-cols-12">
+                      <span className="col-span-4 text-[#737373] font-medium">Customer Care</span>
+                      <span className="col-span-8 text-[#EDEDED]">
+                        Phone: {fieldMap["consumer_care_phone"] || "1800-XXX-XXXX"} | Email: {fieldMap["consumer_care_email"] || "care@brand.com"}
+                      </span>
+                    </div>
+
+                    {fieldMap["fssai_license_no"] && (
+                      <div className="p-3 grid grid-cols-12">
+                        <span className="col-span-4 text-[#10B981] font-medium">FSSAI License No</span>
+                        <span className="col-span-8 text-[#EDEDED] font-bold">
+                          {fieldMap["fssai_license_no"]}
+                        </span>
+                      </div>
+                    )}
+
+                    {(fieldMap["fiber_composition"] || fieldMap["apparel_size"]) && (
+                      <div className="p-3 grid grid-cols-12">
+                        <span className="col-span-4 text-[#EC4899] font-medium">Apparel (Size &amp; Fiber)</span>
+                        <span className="col-span-8 text-[#EDEDED]">
+                          Size: {fieldMap["apparel_size"] || "N/A"} | Fiber: {fieldMap["fiber_composition"] || "N/A"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. EXTRACTION RESULTS */}
+                <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg overflow-hidden">
+                  <div className="p-3 bg-[#151515] border-b border-[#262626] font-bold text-[#EDEDED] flex justify-between">
+                    <span>2. EXTRACTION RESULTS</span>
+                    <span className="text-[11px] text-[#737373] font-normal">OCR / Detection Confidence</span>
+                  </div>
+
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#262626] bg-[#141414] text-[#737373]">
+                        <th className="p-3 w-1/3">Statutory Field</th>
+                        <th className="p-3 w-1/2">Raw Detected Value</th>
+                        <th className="p-3 text-right">Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1F1F1F]">
+                      {(selectedScan.fields || [])
+                        .filter((f) => f.field_value)
+                        .map((f) => (
+                          <tr key={f.field_name} className="hover:bg-[#141414] transition">
+                            <td className="p-3 text-[#A3A3A3] font-medium capitalize">
+                              {f.field_name.replace("_", " ")}
                             </td>
-                            <td className="p-3 text-[#C2C2C2]">
-                              {field.field_value || (
-                                <span className="text-[#737373] italic">
-                                  [Not Detected]
-                                </span>
-                              )}
+                            <td className="p-3 text-[#EDEDED]">
+                              {f.field_value}
                             </td>
-                            <td className="p-3 text-[#737373]">
-                              {((field.ocr_confidence || 1.0) * 100).toFixed(1)}%
+                            <td className="p-3 text-right text-[#10B981]">
+                              {((f.ocr_confidence || 0.95) * 100).toFixed(1)}%
                             </td>
                           </tr>
                         ))}
-                      </tbody>
-                    </table>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* 3. NON-COMPLIANCE / WARNINGS */}
+                <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg overflow-hidden">
+                  <div className="p-3 bg-[#151515] border-b border-[#262626] font-bold text-[#EDEDED] flex justify-between">
+                    <span>3. NON-COMPLIANCE / WARNINGS</span>
+                    <span className="text-[11px] text-[#737373] font-normal">Issue + Statutory Explanation</span>
+                  </div>
+
+                  <div className="p-4 space-y-3">
+                    {failedChecks.length === 0 && unverifiableChecks.length === 0 ? (
+                      <div className="p-4 bg-[#10B981]/10 border border-[#10B981]/30 rounded-lg text-[#10B981] flex items-center gap-3">
+                        <span className="text-base font-bold">✓</span>
+                        <div>
+                          <div className="font-bold">No Statutory Non-Compliances Detected</div>
+                          <div className="text-[11px] text-[#A3A3A3] mt-0.5">
+                            All mandatory statutory packaging declarations comply with Indian Legal Metrology Rules.
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {[...failedChecks, ...unverifiableChecks].map((c) => {
+                          const isFail = c.status === "fail";
+                          return (
+                            <div
+                              key={c.rule_id}
+                              className={`p-3.5 rounded-lg border space-y-1.5 ${
+                                isFail
+                                  ? "bg-[#DC2626]/5 border-[#DC2626]/30 text-[#EDEDED]"
+                                  : "bg-[#F59E0B]/5 border-[#F59E0B]/30 text-[#EDEDED]"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className={`font-bold ${isFail ? "text-[#EF4444]" : "text-[#F59E0B]"}`}>
+                                  [{c.status.toUpperCase()}] {c.rule_citation}
+                                </span>
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-[#262626] text-[#A3A3A3] uppercase">
+                                  {c.severity || "MAJOR"}
+                                </span>
+                              </div>
+                              <p className="text-[#C2C2C2] text-xs leading-relaxed">
+                                {c.explanation}
+                              </p>
+                              {c.fix_suggestion && (
+                                <div className="text-[11px] text-[#10B981] bg-[#10B981]/10 p-2 rounded border border-[#10B981]/20">
+                                  💡 <b>Consumer Guidance:</b> {c.fix_suggestion}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Statutory Checklist Table (25 Checks) */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                      Statutory Rule Checklist & Guidance (25 Rules)
-                    </h3>
-                    <div className="flex gap-2 text-[10px] font-mono text-[#737373]">
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]"></span>
-                        Legal Metrology (1-12)
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
-                        FSSAI Food (13-18)
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]"></span>
-                        Apparel & Textile (19-25)
-                      </span>
-                    </div>
+                {/* 4. OVERALL ASSESSMENT */}
+                <div className={`border rounded-lg p-5 space-y-3 ${verdictColorClass}`}>
+                  <div className="flex items-center justify-between border-b border-current/20 pb-3">
+                    <span className="font-bold tracking-wider uppercase text-[11px]">
+                      4. OVERALL ASSESSMENT
+                    </span>
+                    <span className="text-base font-bold tracking-tight">
+                      {overallVerdict}
+                    </span>
                   </div>
 
-                  <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden">
-                    <table className="w-full text-left border-collapse font-mono text-xs">
-                      <thead>
-                        <tr className="border-b border-[#262626] bg-[#151515] text-[#A3A3A3] font-bold">
-                          <th className="p-3">Citation & Law</th>
-                          <th className="p-3">Status</th>
-                          <th className="p-3">Audit Details & Guidance</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#262626]">
-                        {(selectedScan.checks || []).map((check) => {
-                          let badgeClass = "bg-[#262626] text-[#737373]";
-                          if (check.status === "pass")
-                            badgeClass = "bg-[#10B981]/10 text-[#10B981]";
-                          if (check.status === "fail")
-                            badgeClass = "bg-[#DC2626]/10 text-[#EF4444]";
-                          if (check.status === "unverifiable")
-                            badgeClass = "bg-[#F59E0B]/10 text-[#F59E0B]";
+                  <div className="grid grid-cols-2 gap-4 pt-1">
+                    <div>
+                      <span className="text-[11px] opacity-80 block">Statutory Audit Conclusion:</span>
+                      <p className="text-xs text-[#EDEDED] mt-1 leading-snug">
+                        {failedChecks.length > 0
+                          ? `Product packaging violates ${failedChecks.length} statutory requirement(s). Action or retailer clarification recommended.`
+                          : unverifiableChecks.length > 0
+                          ? `Product has ${unverifiableChecks.length} declaration(s) requiring manual verification.`
+                          : "Product packaging satisfies all evaluated statutory legal metrology declarations."}
+                      </p>
+                    </div>
 
-                          const isFssai = check.rule_id.startsWith("fssai_");
-                          const isApparel = check.rule_id.startsWith("apparel_");
-
-                          return (
-                            <tr
-                              key={check.rule_id}
-                              className="hover:bg-[#151515] transition"
-                            >
-                              <td className="p-3 font-bold text-[#EDEDED] max-w-[150px] align-top space-y-1">
-                                <div>{check.rule_citation}</div>
-                                <span
-                                  className={`text-[9px] px-1.5 py-0.5 rounded font-mono block w-fit ${
-                                    isFssai
-                                      ? "bg-[#10B981]/10 text-[#10B981]"
-                                      : isApparel
-                                      ? "bg-[#EC4899]/10 text-[#F472B6]"
-                                      : "bg-[#3B82F6]/10 text-[#60A5FA]"
-                                  }`}
-                                >
-                                  {isFssai ? "FSSAI 2020" : isApparel ? "TEXTILE 2011" : "LM 2011"}
-                                </span>
-                              </td>
-                              <td className="p-3 align-top">
-                                <span
-                                  className={`px-2 py-0.5 rounded font-bold uppercase tracking-wider ${badgeClass}`}
-                                >
-                                  {check.status}
-                                </span>
-                              </td>
-                              <td className="p-3 space-y-1.5 align-top">
-                                <div className="text-[#C2C2C2] leading-relaxed">
-                                  {check.explanation}
-                                </div>
-                                {check.status === "fail" && check.fix_suggestion && (
-                                  <div className="text-[11px] text-[#10B981] font-mono bg-[#10B981]/5 border border-[#10B981]/20 rounded p-2 flex items-start gap-1.5">
-                                    <span className="font-bold shrink-0">
-                                      💡 Consumer Tip:
-                                    </span>
-                                    <span className="leading-snug">
-                                      {check.fix_suggestion}
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                    <div>
+                      <span className="text-[11px] opacity-80 block">Image Forensics &amp; Authenticity:</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-sm font-bold text-[#EDEDED]">
+                          {selectedScan.authenticity_score.toFixed(1)}%
+                        </span>
+                        <span className="text-[11px] text-[#A3A3A3]">
+                          {selectedScan.authenticity_score >= 70.0
+                            ? "(Authentic / Original Capture)"
+                            : "(Tampering / Synthesis Warning)"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1324,7 +1234,7 @@ export default function Dashboard() {
                     No Product Audit Selected
                   </h3>
                   <p className="text-xs max-w-sm mx-auto font-mono">
-                    Select a category above, then upload a product label photo, snap with live camera, or paste an e-commerce listing URL to audit.
+                    Select a category on the left, then upload a product label photo, snap with live camera, or paste an e-commerce listing URL to audit.
                   </p>
                 </div>
               </div>
