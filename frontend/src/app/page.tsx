@@ -129,8 +129,10 @@ export default function Dashboard() {
     "Evaluating AI Deepfake classifier...",
     "Detecting packaged retail objects (YOLOv8)...",
     "Running multilingual OCR (English & Hindi)...",
-    "Structuring label text blocks into metadata fields...",
-    "Running statutory Legal Metrology rule engine...",
+    "Extracting Legal Metrology & FSSAI Food metadata...",
+    "Verifying 3-Tier FSSAI FoSCoS License Registry...",
+    "Validating Nutrition Table & Allergen Rules...",
+    "Executing statutory rule engine (18 checks)...",
     "Assembling report & compiling PDF..."
   ];
 
@@ -149,7 +151,7 @@ export default function Dashboard() {
           return prev;
         }
       });
-    }, 450);
+    }, 400);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -308,7 +310,7 @@ export default function Dashboard() {
             PACKAUDIT CONSOLE
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-[#10B981]/10 text-[#10B981] font-mono">
-            LIVE ENGINE
+            LM + FSSAI ENGINE
           </span>
         </div>
 
@@ -370,7 +372,6 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                {/* File picker button */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded text-center cursor-pointer"
@@ -388,7 +389,7 @@ export default function Dashboard() {
                       d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                     />
                   </svg>
-                  <span className="text-xs font-mono font-medium">Upload Photo</span>
+                  <span className="text-xs font-mono font-medium">Upload Label Photo</span>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -398,7 +399,6 @@ export default function Dashboard() {
                   />
                 </button>
 
-                {/* Webcam button */}
                 <button
                   onClick={startWebcam}
                   className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded text-center cursor-pointer"
@@ -505,7 +505,7 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full border-2 border-[#262626] border-t-[#10B981] animate-spin"></div>
               <div className="space-y-2 max-w-md">
                 <h3 className="font-mono text-sm font-bold text-[#EDEDED]">
-                  Processing Legal Metrology Compliance Audit
+                  Executing Full Statutory Audit (LM Rules + FSSAI 2020)
                 </h3>
                 <p className="text-xs text-[#10B981] font-mono">
                   {PIPELINE_STEPS[scanStep]}
@@ -628,7 +628,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Prominent Statutory Failure Summary Banner (Requirement 3) */}
+              {/* Prominent Statutory Failure Summary Banner */}
               {(() => {
                 const failedChecks = (selectedScan.checks || []).filter(
                   (c) => c.status === "fail"
@@ -641,17 +641,16 @@ export default function Dashboard() {
                       </div>
                       <div className="space-y-1">
                         <div className="text-xs font-mono font-bold text-[#10B981]">
-                          Fully Compliant with Legal Metrology (Packaged Commodities) Rules, 2011
+                          Fully Compliant with Legal Metrology & FSSAI Food Regulations
                         </div>
                         <p className="text-[11px] font-mono text-[#A3A3A3]">
-                          All mandatory packaging declarations (MRP, Net Quantity, Country of Origin, Manufacturer/Packer details, Consumer Care, Rule 6(3) Font Height) verified successfully.
+                          All 18 statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, FSSAI 3-Tier License, Nutrition, Veg/Non-Veg, Ingredients, Allergens, Expiry Date) verified successfully.
                         </p>
                       </div>
                     </div>
                   );
                 }
 
-                // Sort failures by severity: CRITICAL (3) > MAJOR (2) > MINOR (1)
                 const severityWeight: Record<string, number> = {
                   CRITICAL: 3,
                   MAJOR: 2,
@@ -682,11 +681,11 @@ export default function Dashboard() {
                             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                           />
                         </svg>
-                        Non-Compliance Summary: {failedChecks.length} Mandatory Violation
+                        Non-Compliance Summary: {failedChecks.length} Statutory Violation
                         {failedChecks.length > 1 ? "s" : ""} Found
                       </div>
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-[#DC2626]/20 text-[#EF4444] uppercase">
-                        Legal Metrology Act Violation
+                        Action Required
                       </span>
                     </div>
 
@@ -715,7 +714,7 @@ export default function Dashboard() {
                 );
               })()}
 
-              {/* Authenticity Maps (ELA / EXIF / FFT details) */}
+              {/* Authenticity Maps */}
               {selectedScan.authenticity_report && (
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
@@ -799,7 +798,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Extracted Declarations Table (Requirement 2: Conditional Confidence Header) */}
+              {/* Extracted Declarations Table */}
               <div className="space-y-3">
                 <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
                   Extracted Declarations
@@ -846,18 +845,31 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Statutory Checklist Table (Requirement 5: Auto-Fix Guidance) */}
+              {/* Statutory Checklist Table (18 Checks: LM + FSSAI) */}
               <div className="space-y-3">
-                <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                  Statutory Rule Checklist & Guidance
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
+                    Statutory Rule Checklist & Guidance (18 Rules)
+                  </h3>
+                  <div className="flex gap-2 text-[10px] font-mono text-[#737373]">
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#3B82F6]"></span>
+                      Legal Metrology (1-12)
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
+                      FSSAI Food 2020 (13-18)
+                    </span>
+                  </div>
+                </div>
+
                 <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden">
                   <table className="w-full text-left border-collapse font-mono text-xs">
                     <thead>
                       <tr className="border-b border-[#262626] bg-[#151515] text-[#A3A3A3] font-bold">
-                        <th className="p-3">Citation</th>
+                        <th className="p-3">Citation & Law</th>
                         <th className="p-3">Status</th>
-                        <th className="p-3">Audit Details & Fix Guidance</th>
+                        <th className="p-3">Audit Details & Auto-Fix Guidance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#262626]">
@@ -870,13 +882,24 @@ export default function Dashboard() {
                         if (check.status === "unverifiable")
                           badgeClass = "bg-[#F59E0B]/10 text-[#F59E0B]";
 
+                        const isFssai = check.rule_id.startsWith("fssai_");
+
                         return (
                           <tr
                             key={check.rule_id}
                             className="hover:bg-[#151515] transition"
                           >
-                            <td className="p-3 font-bold text-[#EDEDED] max-w-[130px] truncate align-top">
-                              {check.rule_citation}
+                            <td className="p-3 font-bold text-[#EDEDED] max-w-[150px] align-top space-y-1">
+                              <div>{check.rule_citation}</div>
+                              <span
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-mono block w-fit ${
+                                  isFssai
+                                    ? "bg-[#10B981]/10 text-[#10B981]"
+                                    : "bg-[#3B82F6]/10 text-[#60A5FA]"
+                                }`}
+                              >
+                                {isFssai ? "FSSAI 2020" : "LM 2011"}
+                              </span>
                             </td>
                             <td className="p-3 align-top">
                               <span
@@ -937,13 +960,13 @@ export default function Dashboard() {
         </section>
       </div>
 
-      {/* Lightweight Mock Officer Authentication Modal (Requirement 4) */}
+      {/* Lightweight Mock Officer Authentication Modal */}
       {loginModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="w-full max-w-md border border-[#262626] bg-[#0A0A0A] rounded p-6 space-y-5 shadow-2xl">
             <div className="space-y-1 text-center">
               <span className="text-[10px] font-mono font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-[#10B981]/10 text-[#10B981]">
-                Legal Metrology Directorate
+                Legal Metrology Directorate & FSSAI
               </span>
               <h2 className="text-lg font-bold font-mono text-[#EDEDED] mt-2">
                 Inspector Authentication

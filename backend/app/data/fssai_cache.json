@@ -1,0 +1,122 @@
+{
+  "10012011000167": {
+    "license_no": "10012011000167",
+    "company_name": "Britannia Industries Limited",
+    "premise_address": "5/1A, Hungerford Street, Kolkata, West Bengal - 700017",
+    "license_type": "Central License",
+    "state": "West Bengal",
+    "status": "Active",
+    "valid_upto": "2028-10-31",
+    "categories": ["Biscuits", "Bakery Products", "Dairy"]
+  },
+  "10012022000258": {
+    "license_no": "10012022000258",
+    "company_name": "Nestle India Limited",
+    "premise_address": "100 / 101, World Trade Centre, Barakhamba Lane, New Delhi - 110001",
+    "license_type": "Central License",
+    "state": "Delhi",
+    "status": "Active",
+    "valid_upto": "2029-06-30",
+    "categories": ["Milk Products", "Confectionery", "Prepared Foods"]
+  },
+  "10012021000071": {
+    "license_no": "10012021000071",
+    "company_name": "Gujarat Cooperative Milk Marketing Federation Ltd (Amul)",
+    "premise_address": "Amul Dairy Road, Anand, Gujarat - 388001",
+    "license_type": "Central License",
+    "state": "Gujarat",
+    "status": "Active",
+    "valid_upto": "2030-03-31",
+    "categories": ["Dairy Products", "Beverages", "Ice Creams"]
+  },
+  "10013013000572": {
+    "license_no": "10013013000572",
+    "company_name": "Haldiram Snacks Private Limited",
+    "premise_address": "B-1/H-8, Mohan Co-operative Industrial Estate, Main Mathura Road, New Delhi - 110044",
+    "license_type": "Central License",
+    "state": "Delhi",
+    "status": "Active",
+    "valid_upto": "2027-11-30",
+    "categories": ["Ready-to-eat Savouries", "Sweets", "Namkeen"]
+  },
+  "10014031001025": {
+    "license_no": "10014031001025",
+    "company_name": "Tata Consumer Products Limited",
+    "premise_address": "1, Bishop Lefroy Road, Kolkata, West Bengal - 700020",
+    "license_type": "Central License",
+    "state": "West Bengal",
+    "status": "Active",
+    "valid_upto": "2028-08-31",
+    "categories": ["Tea", "Coffee", "Salt", "Spices", "Pulses"]
+  },
+  "10012011000014": {
+    "license_no": "10012011000014",
+    "company_name": "ITC Limited",
+    "premise_address": "Virginia House, 37 J.L. Nehru Road, Kolkata, West Bengal - 700071",
+    "license_type": "Central License",
+    "state": "West Bengal",
+    "status": "Active",
+    "valid_upto": "2029-12-31",
+    "categories": ["Atta", "Biscuits", "Snacks", "Noodles"]
+  },
+  "10012011000263": {
+    "license_no": "10012011000263",
+    "company_name": "Dabur India Limited",
+    "premise_address": "8/3, Asaf Ali Road, New Delhi - 110002",
+    "license_type": "Central License",
+    "state": "Delhi",
+    "status": "Active",
+    "valid_upto": "2028-05-31",
+    "categories": ["Fruit Juices", "Honey", "Digestives", "Culinary"]
+  },
+  "10012022000046": {
+    "license_no": "10012022000046",
+    "company_name": "Parle Products Private Limited",
+    "premise_address": "North Level Crossing, Vile Parle East, Mumbai, Maharashtra - 400057",
+    "license_type": "Central License",
+    "state": "Maharashtra",
+    "status": "Active",
+    "valid_upto": "2027-09-30",
+    "categories": ["Biscuits", "Confectionery", "Snacks"]
+  },
+  "10012022000224": {
+    "license_no": "10012022000224",
+    "company_name": "Marico Limited",
+    "premise_address": "7th Floor, Grande Palladium, 175 CST Road, Kalina, Santacruz East, Mumbai - 400098",
+    "license_type": "Central License",
+    "state": "Maharashtra",
+    "status": "Active",
+    "valid_upto": "2028-02-28",
+    "categories": ["Edible Oils", "Oats", "Healthy Foods"]
+  },
+  "10012011000145": {
+    "license_no": "10012011000145",
+    "company_name": "Mother Dairy Fruit & Vegetable Pvt Ltd",
+    "premise_address": "Patparganj, Delhi - 110092",
+    "license_type": "Central License",
+    "state": "Delhi",
+    "status": "Active",
+    "valid_upto": "2029-01-31",
+    "categories": ["Milk & Dairy Products", "Ice Cream", "Edible Oils"]
+  },
+  "10014022002752": {
+    "license_no": "10014022002752",
+    "company_name": "Mondelez India Foods Private Limited (Cadbury)",
+    "premise_address": "Unit No. 2001, 20th Floor, Tower-3, One International Center, Parel, Mumbai - 400013",
+    "license_type": "Central License",
+    "state": "Maharashtra",
+    "status": "Active",
+    "valid_upto": "2028-11-30",
+    "categories": ["Chocolates", "Confectionery", "Beverages"]
+  },
+  "10012012000189": {
+    "license_no": "10012012000189",
+    "company_name": "PepsiCo India Holdings Private Limited",
+    "premise_address": "Level 3-6, Pioneer Square, Sector 62, Gurugram, Haryana - 122102",
+    "license_type": "Central License",
+    "state": "Haryana",
+    "status": "Active",
+    "valid_upto": "2029-07-31",
+    "categories": ["Carbonated Beverages", "Fruit Juices", "Potato Chips", "Snacks"]
+  }
+}

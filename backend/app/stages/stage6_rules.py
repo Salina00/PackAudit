@@ -7,6 +7,14 @@ from rapidfuzz import fuzz, process
 
 from backend.app.models.models import RuleDefinition, ManufacturerCache
 from backend.app.core.config import settings
+from backend.app.stages.stage8_fssai import (
+    check_fssai_3tier,
+    validate_nutrition_table,
+    validate_veg_nonveg_logo,
+    validate_ingredients_descending_order,
+    validate_allergen_declaration,
+    validate_expiry_date_declaration
+)
 
 # In-memory rule definitions cache loaded at startup/first request
 _rules_cache = {}
@@ -25,7 +33,15 @@ STATIC_FIX_SUGGESTIONS = {
     "check_9": "For imported commodities, declare the registered company name and complete postal address of the Indian importer.",
     "check_10": "Increase letter and numeral font height to meet the minimum statutory height (e.g. min 2.0 mm for PDP area > 100 cm²) based on package surface area.",
     "check_11": "Pack the commodity in one of the prescribed standard net quantity sizes specified under the Second Schedule of Legal Metrology Rules.",
-    "check_12": "Ensure the digital marketplace listing displays all mandatory statutory declarations (MRP, Net Quantity, Country of Origin, Manufacturer details, Consumer care) matching physical label."
+    "check_12": "Ensure the digital marketplace listing displays all mandatory statutory declarations (MRP, Net Quantity, Country of Origin, Manufacturer details, Consumer care) matching physical label.",
+    
+    # FSSAI Food & Beverage Fix Suggestions
+    "fssai_check_1": "Obtain and declare a valid 14-digit FSSAI license/registration number with the official FSSAI logo on the Principal Display Panel.",
+    "fssai_check_2": "Include a structured Nutritional Information table declaring all 8 mandatory nutrients per 100g/100ml and per serving.",
+    "fssai_check_3": "Display the compliant Veg (green circle in green square) or Non-Veg (brown triangle in brown square) symbol meeting minimum PDP millimeter dimensions.",
+    "fssai_check_4": "List all ingredients in strictly descending order of incoming weight/volume, ensuring declared percentages descend monotonically.",
+    "fssai_check_5": "Add a separate allergen advisory statement immediately adjacent to ingredients (e.g. 'Contains: Wheat (Gluten), Milk, Tree Nuts').",
+    "fssai_check_6": "Declare an explicit 'Expiry Date' or 'Use By' date on the package (e.g. 'Expiry: 31/12/2026'). 'Best Before' is not a legal substitute."
 }
 
 def get_rules_definitions(db: Session) -> Dict[str, Dict[str, Any]]:
@@ -48,11 +64,6 @@ def get_rules_definitions(db: Session) -> Dict[str, Dict[str, Any]]:
     return _rules_cache
 
 def parse_net_qty_numeric(qty_str: Optional[str]) -> Tuple[Optional[float], Optional[str]]:
-    """
-    Parses a quantity string like '150 g' or '1 kg' or '200 ml' into a numeric value in grams/ml
-    and returns (numeric_val_in_standard_unit, base_unit).
-    Standardizes kg to g (x1000) and L to ml (x1000).
-    """
     if not qty_str:
         return None, None
         
@@ -64,7 +75,6 @@ def parse_net_qty_numeric(qty_str: Optional[str]) -> Tuple[Optional[float], Opti
     val = float(match.group(1))
     unit = match.group(2)
     
-    # Standardize units
     if unit in ["g", "grm", "gram", "grams"]:
         return val, "g"
     elif unit in ["kg", "kg.", "kilogram", "kilograms"]:
@@ -81,10 +91,6 @@ def parse_net_qty_numeric(qty_str: Optional[str]) -> Tuple[Optional[float], Opti
     return val, unit
 
 def verify_address_nominatim(address: str) -> Tuple[bool, str]:
-    """
-    Checks the physical existence of an address using OpenStreetMap Nominatim.
-    Fuzzy matches the results to handle OCR errors.
-    """
     if not address or len(address) < 15:
         return False, "Address is too short to verify."
         
@@ -116,10 +122,6 @@ def verify_address_nominatim(address: str) -> Tuple[bool, str]:
         return True, f"Nominatim API geocode offline/timeout. Address bypass enabled. (Error: {str(e)})"
 
 def check_address_with_cache(address: str, company: Optional[str], db: Session) -> Tuple[bool, str]:
-    """
-    Verifies manufacturer address against the static database cache of 50 national brands.
-    If not in cache, falls back to OSM Nominatim verification.
-    """
     if not address:
         return False, "Address is missing."
         
@@ -156,14 +158,12 @@ def _get_rule_meta(rules: Dict[str, Dict[str, Any]], rule_id: str, default_citat
     citation = rule_info.get("rule_citation") or default_citation
     desc = rule_info.get("description") or default_desc
     severity = rule_info.get("severity") or default_severity
-    fix_suggestion = rule_info.get("fix_suggestion") or STATIC_FIX_SUGGESTIONS.get(rule_id, "Ensure declaration complies with Legal Metrology Rules, 2011.")
+    fix_suggestion = rule_info.get("fix_suggestion") or STATIC_FIX_SUGGESTIONS.get(rule_id, "Ensure declaration complies with statutory regulations.")
     return citation, desc, severity, fix_suggestion
 
 def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, calibration_factor: Optional[float], db: Session) -> List[Dict[str, Any]]:
     """
-    Stage 6: Compliance rule engine.
-    Runs all 12 checks against extracted fields.
-    Returns: List of check result dictionaries with rule_id, rule_citation, description, severity, fix_suggestion, status, explanation.
+    Stage 6: Compliance rule engine running 12 Legal Metrology checks + 6 FSSAI Food checks.
     """
     rules = get_rules_definitions(db)
     check_results = []
@@ -174,7 +174,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
     exemption_reason = ""
     
     qty_val, qty_unit = parse_net_qty_numeric(extracted_fields.get("net_quantity"))
-    raw_text = " ".join([str(v) for v in extracted_fields.values() if v])
+    raw_text = " ".join([str(v) for v in extracted_fields.values() if v and not isinstance(v, (dict, list))])
     raw_text_lower = raw_text.lower()
     
     if qty_val is not None and qty_unit in ["g", "ml"] and qty_val <= 10.0:
@@ -367,7 +367,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             "explanation": "Fail: Maximum Retail Price (MRP) declaration is missing."
         })
     else:
-        phrases = rules.get("check_6", {}).get("validation_logic", {}).get("required_phrases", ["inclusive of all taxes", "incl. of all taxes", "incl of all taxes", "incl.of all taxes"])
+        phrases = rules.get("check_6", {}).get("validation_logic", {}).get("required_phrases", ["inclusive of all taxes", "incl. of all taxes", "incl.of all taxes", "incl of all taxes"])
         has_taxes_phrase = any(p in raw_text_lower for p in phrases) or input_type == "url"
         
         if not has_taxes_phrase:
@@ -632,6 +632,110 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             "fix_suggestion": fix12,
             "status": "exempt",
             "explanation": "Exempt: Input type is a camera image upload, not an e-commerce listing URL."
+        })
+
+    # =========================================================================
+    # 13 - 18: FSSAI FOOD & BEVERAGE COMPLIANCE CHECKS (FSSAI 2020)
+    # =========================================================================
+    fssai_no = extracted_fields.get("fssai_license_no")
+    nutrition_tbl = extracted_fields.get("nutrition_table") or {}
+    ing_text = extracted_fields.get("ingredients_text")
+    allergen_stmt = extracted_fields.get("allergen_statement")
+    veg_type = extracted_fields.get("veg_nonveg", "veg")
+    exp_date = extracted_fields.get("expiry_date")
+    bb_date = extracted_fields.get("best_before_date")
+    
+    # Food domain routing
+    g_name_lower = str(extracted_fields.get("generic_name") or "").lower()
+    non_food_keywords = [
+        "soap", "bath soap", "detergent", "shampoo", "conditioner", "cream", "lotion", "perfume", 
+        "deodorant", "toothpaste", "toothbrush", "cleaner", "battery", "bulb", "wire", "cable", 
+        "appliance", "paint", "cement", "lubricant", "cosmetic", "toy", "paper", "stationery"
+    ]
+    is_non_food = any(k in g_name_lower for k in non_food_keywords) and not (fssai_no or nutrition_tbl or ing_text)
+    
+    # 13. FSSAI Check 1: FSSAI License 3-Tier Verification
+    fcit1, fdesc1, fsev1, ffix1 = _get_rule_meta(rules, "fssai_check_1", "FSSAI Sec 31 / License 3-Tier", "14-digit FSSAI License/Registration decoded via 3-Tier syntax, FoSCoS portal, and verified cache.", "CRITICAL")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_1", "rule_citation": fcit1, "description": fdesc1, "severity": fsev1, "fix_suggestion": ffix1,
+            "status": "exempt", "explanation": f"Exempt: Commodity '{g_name}' is a non-food product not subject to FSSAI licensing."
+        })
+    else:
+        fssai_1_res = check_fssai_3tier(fssai_no, mfg_name)
+        check_results.append({
+            "rule_id": "fssai_check_1", "rule_citation": fcit1, "description": fdesc1, "severity": fsev1, "fix_suggestion": ffix1,
+            "status": fssai_1_res["status"], "explanation": fssai_1_res["explanation"]
+        })
+    
+    # 14. FSSAI Check 2: Nutrition Information Table & Calculations
+    fcit2, fdesc2, fsev2, ffix2 = _get_rule_meta(rules, "fssai_check_2", "FSSAI 2020 Reg 5(3) / Nutrition", "Nutritional Information per 100g/100ml and per serving declaring 8 mandatory nutrients.", "CRITICAL")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_2", "rule_citation": fcit2, "description": fdesc2, "severity": fsev2, "fix_suggestion": ffix2,
+            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI nutritional labelling."
+        })
+    else:
+        fssai_2_res = validate_nutrition_table(nutrition_tbl, raw_text)
+        check_results.append({
+            "rule_id": "fssai_check_2", "rule_citation": fcit2, "description": fdesc2, "severity": fsev2, "fix_suggestion": ffix2,
+            "status": fssai_2_res["status"], "explanation": fssai_2_res["explanation"]
+        })
+    
+    # 15. FSSAI Check 3: Veg / Non-Veg Logo & Sizing
+    fcit3, fdesc3, fsev3, ffix3 = _get_rule_meta(rules, "fssai_check_3", "FSSAI 2020 Reg 5(4) / Veg Logo", "Mandatory Vegetarian or Non-Vegetarian logo conforming to PDP surface area millimeter dimensions.", "MAJOR")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_3", "rule_citation": fcit3, "description": fdesc3, "severity": fsev3, "fix_suggestion": ffix3,
+            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' does not require FSSAI Veg/Non-Veg logo."
+        })
+    else:
+        fssai_3_res = validate_veg_nonveg_logo({"type": veg_type}, pdp_area_cm2=150.0)
+        check_results.append({
+            "rule_id": "fssai_check_3", "rule_citation": fcit3, "description": fdesc3, "severity": fsev3, "fix_suggestion": ffix3,
+            "status": fssai_3_res["status"], "explanation": fssai_3_res["explanation"]
+        })
+    
+    # 16. FSSAI Check 4: List of Ingredients (Descending Order)
+    fcit4, fdesc4, fsev4, ffix4 = _get_rule_meta(rules, "fssai_check_4", "FSSAI 2020 Reg 5(1) / Ingredients", "List of Ingredients in strictly descending order of weight or volume at manufacture with QUID compliance.", "MAJOR")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_4", "rule_citation": fcit4, "description": fdesc4, "severity": fsev4, "fix_suggestion": ffix4,
+            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI ingredient sequencing regulations."
+        })
+    else:
+        fssai_4_res = validate_ingredients_descending_order(ing_text, raw_text)
+        check_results.append({
+            "rule_id": "fssai_check_4", "rule_citation": fcit4, "description": fdesc4, "severity": fsev4, "fix_suggestion": ffix4,
+            "status": fssai_4_res["status"], "explanation": fssai_4_res["explanation"]
+        })
+    
+    # 17. FSSAI Check 5: Mandatory Allergen Declaration
+    fcit5, fdesc5, fsev5, ffix5 = _get_rule_meta(rules, "fssai_check_5", "FSSAI 2020 Reg 5(2) / Allergens", "Mandatory separate allergen declaration ('Contains: ...') for 8 statutory allergen classes.", "CRITICAL")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_5", "rule_citation": fcit5, "description": fdesc5, "severity": fsev5, "fix_suggestion": ffix5,
+            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI allergen regulations."
+        })
+    else:
+        fssai_5_res = validate_allergen_declaration(ing_text, allergen_stmt, raw_text)
+        check_results.append({
+            "rule_id": "fssai_check_5", "rule_citation": fcit5, "description": fdesc5, "severity": fsev5, "fix_suggestion": ffix5,
+            "status": fssai_5_res["status"], "explanation": fssai_5_res["explanation"]
+        })
+    
+    # 18. FSSAI Check 6: Expiry Date vs "Best Before" Mandate
+    fcit6, fdesc6, fsev6, ffix6 = _get_rule_meta(rules, "fssai_check_6", "FSSAI 2020 Reg 5(10) / Expiry Date", "Mandatory Expiry Date or Use By date declaration; Best Before date cannot be used as a legal substitute.", "CRITICAL")
+    if is_non_food:
+        check_results.append({
+            "rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6,
+            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI date of minimum durability / expiry mandates."
+        })
+    else:
+        fssai_6_res = validate_expiry_date_declaration(mfg_d, exp_date, bb_date, raw_text)
+        check_results.append({
+            "rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6,
+            "status": fssai_6_res["status"], "explanation": fssai_6_res["explanation"]
         })
         
     return check_results

@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import SessionLocal, engine, Base
 from backend.app.models.models import RuleDefinition, ManufacturerCache
 
-# 12 Legal Metrology Rules Data
+# 12 Legal Metrology Rules + 6 FSSAI Food Rules Data
 RULE_DEFINITIONS_DATA = [
+    # ------------------ Legal Metrology Rules (1 - 12) ------------------
     {
         "rule_id": "check_1",
         "rule_citation": "Rule 18 Exemption Pre-Check",
@@ -156,6 +157,74 @@ RULE_DEFINITIONS_DATA = [
         },
         "severity": "MAJOR",
         "fix_suggestion": "Ensure the digital marketplace listing displays all mandatory statutory declarations (MRP, Net Quantity, Country of Origin, Manufacturer details, Consumer care) matching physical label."
+    },
+
+    # ------------------ FSSAI Food & Beverage Rules (FSSAI 2020) ------------------
+    {
+        "rule_id": "fssai_check_1",
+        "rule_citation": "FSSAI Sec 31 / License 3-Tier",
+        "description": "Every food package must display a valid 14-digit FSSAI License/Registration number verified through mathematical syntax, FoSCoS portal, and state registry cache.",
+        "check_type": "presence",
+        "validation_logic": {
+            "syntax_pattern": r"^[12][0-3][0-9]\d{11}$"
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Obtain and declare a valid 14-digit FSSAI license/registration number with the official FSSAI logo on the Principal Display Panel."
+    },
+    {
+        "rule_id": "fssai_check_2",
+        "rule_citation": "FSSAI 2020 Reg 5(3) / Nutrition",
+        "description": "Nutritional Information per 100g/100ml and per serving declaring Energy, Protein, Carbohydrates, Total/Added Sugars, Fat, Saturated/Trans Fat, and Sodium with mathematical consistency.",
+        "check_type": "measurement",
+        "validation_logic": {
+            "mandatory_nutrients": ["energy", "protein", "carbohydrates", "total_fat", "saturated_fat", "trans_fat", "sodium"]
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Include a structured Nutritional Information table declaring all 8 mandatory nutrients per 100g/100ml and per serving."
+    },
+    {
+        "rule_id": "fssai_check_3",
+        "rule_citation": "FSSAI 2020 Reg 5(4) / Veg Logo",
+        "description": "Mandatory Vegetarian (green circle in green square) or Non-Vegetarian (brown triangle in brown square) logo conforming to PDP surface area millimeter dimensions.",
+        "check_type": "measurement",
+        "validation_logic": {
+            "pdp_sizing_mm": {"<=100": 6.0, "<=500": 8.0, "<=2500": 10.0, ">2500": 16.0}
+        },
+        "severity": "MAJOR",
+        "fix_suggestion": "Display the compliant Veg (green circle in green square) or Non-Veg (brown triangle in brown square) symbol meeting minimum PDP millimeter dimensions."
+    },
+    {
+        "rule_id": "fssai_check_4",
+        "rule_citation": "FSSAI 2020 Reg 5(1) / Ingredients",
+        "description": "List of Ingredients in strictly descending order of weight or volume at manufacture with Quantitative Ingredient Declaration (QUID) monotonicity.",
+        "check_type": "presence",
+        "validation_logic": {
+            "descending_order_enforced": True
+        },
+        "severity": "MAJOR",
+        "fix_suggestion": "List all ingredients in strictly descending order of incoming weight/volume, ensuring declared percentages descend monotonically."
+    },
+    {
+        "rule_id": "fssai_check_5",
+        "rule_citation": "FSSAI 2020 Reg 5(2) / Allergens",
+        "description": "Mandatory separate allergen declaration ('Contains: ...') for 8 statutory allergen classes (gluten, crustaceans, milk, eggs, fish, nuts, soy, sulphites).",
+        "check_type": "presence",
+        "validation_logic": {
+            "allergen_classes": ["gluten", "crustaceans", "milk", "eggs", "fish", "nuts", "soy", "sulphites"]
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Add a separate allergen advisory statement immediately adjacent to ingredients (e.g. 'Contains: Wheat (Gluten), Milk, Tree Nuts')."
+    },
+    {
+        "rule_id": "fssai_check_6",
+        "rule_citation": "FSSAI 2020 Reg 5(10) / Expiry Date",
+        "description": "Mandatory Expiry Date or Use By date declaration. 'Best Before' date is optional and cannot substitute for an explicit Expiry Date.",
+        "check_type": "regex",
+        "validation_logic": {
+            "mandatory_keywords": ["expiry", "use by", "exp"]
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Declare an explicit 'Expiry Date' or 'Use By' date on the package (e.g. 'Expiry: 31/12/2026'). 'Best Before' is not a legal substitute."
     }
 ]
 
@@ -207,7 +276,7 @@ def seed_database():
             conn.execute(text("ALTER TABLE rule_definitions ADD COLUMN IF NOT EXISTS fix_suggestion VARCHAR;"))
             conn.commit()
         
-        print("Seeding Rule Definitions...")
+        print(f"Seeding {len(RULE_DEFINITIONS_DATA)} Rule Definitions (12 Legal Metrology + 6 FSSAI Food)...")
         for r_data in RULE_DEFINITIONS_DATA:
             existing = db.query(RuleDefinition).filter(RuleDefinition.rule_id == r_data["rule_id"]).first()
             if not existing:
