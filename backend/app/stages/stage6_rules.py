@@ -180,12 +180,20 @@ def _get_rule_meta(rules: Dict[str, Dict[str, Any]], rule_id: str, default_citat
     fix_suggestion = rule_info.get("fix_suggestion") or STATIC_FIX_SUGGESTIONS.get(rule_id, "Ensure declaration complies with statutory regulations.")
     return citation, desc, severity, fix_suggestion
 
-def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, calibration_factor: Optional[float], db: Session) -> List[Dict[str, Any]]:
+def run_compliance_checks(
+    extracted_fields: Dict[str, Any], 
+    input_type: str, 
+    calibration_factor: Optional[float], 
+    db: Session,
+    target_category: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """
     Stage 6: Compliance rule engine running 25 statutory rules:
     - 12 Legal Metrology General Rules
     - 6 FSSAI Food & Beverage Rules
     - 7 Apparel & Textile Rules
+    
+    target_category: 'food' | 'apparel' | 'general' | None (auto-detect)
     """
     rules = get_rules_definitions(db)
     check_results = []
@@ -671,33 +679,37 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
     
     g_name_lower = str(extracted_fields.get("generic_name") or "").lower()
     
-    # Keyword detection for Apparel
-    apparel_keywords = [
-        "shirt", "t-shirt", "tee", "pant", "pants", "trouser", "trousers", "jeans", "denim",
-        "saree", "sari", "kurta", "kurti", "dress", "jacket", "blazer", "sweater", "hoodie",
-        "sweatshirt", "socks", "shorts", "skirt", "underwear", "briefs", "boxers", "vest",
-        "fabric", "textile", "cotton", "polyester", "silk", "linen", "garment", "apparel",
-        "linen", "towel", "bedsheet", "curtain", "suit", "cloth", "footwear", "shoes"
-    ]
-    is_apparel = any(k in g_name_lower for k in apparel_keywords) or bool(fiber_comp) or bool(app_size) or "cotton" in raw_text_lower or "polyester" in raw_text_lower
-    
-    # Keyword detection for Food
-    food_keywords = [
-        "tea", "coffee", "biscuit", "cookie", "oil", "ghee", "butter", "milk", "curd", "paneer", 
-        "flour", "atta", "maida", "rice", "wheat", "dal", "pulse", "sugar", "salt", "spice", 
-        "masala", "juice", "drink", "beverage", "water", "snack", "namkeen", "chips", "chocolate", 
-        "sweet", "candy", "sauce", "ketchup", "jam", "honey", "noodle", "pasta", "cereal", "oats",
-        "bread", "cake", "food", "edible"
-    ]
-    is_food = (any(k in g_name_lower for k in food_keywords) or bool(fssai_no) or bool(nutrition_tbl) or bool(ing_text)) and not is_apparel
-    
-    # Non-food / Non-apparel general commodity
-    non_food_keywords = [
-        "soap", "bath soap", "detergent", "shampoo", "conditioner", "cream", "lotion", "perfume", 
-        "deodorant", "toothpaste", "toothbrush", "cleaner", "battery", "bulb", "wire", "cable", 
-        "appliance", "paint", "cement", "lubricant", "cosmetic", "toy", "paper", "stationery"
-    ]
-    is_non_food_general = any(k in g_name_lower for k in non_food_keywords) and not (fssai_no or nutrition_tbl or ing_text) and not is_apparel
+    # 1. Determine Category from target_category parameter or heuristics
+    if target_category:
+        norm_cat = target_category.lower().strip()
+        if "food" in norm_cat or "beverage" in norm_cat:
+            is_food = True
+            is_apparel = False
+        elif "apparel" in norm_cat or "textile" in norm_cat:
+            is_apparel = True
+            is_food = False
+        else: # "general"
+            is_food = False
+            is_apparel = False
+    else:
+        # Automated heuristic detection
+        apparel_keywords = [
+            "shirt", "t-shirt", "tee", "pant", "pants", "trouser", "trousers", "jeans", "denim",
+            "saree", "sari", "kurta", "kurti", "dress", "jacket", "blazer", "sweater", "hoodie",
+            "sweatshirt", "socks", "shorts", "skirt", "underwear", "briefs", "boxers", "vest",
+            "fabric", "textile", "cotton", "polyester", "silk", "linen", "garment", "apparel",
+            "linen", "towel", "bedsheet", "curtain", "suit", "cloth", "footwear", "shoes"
+        ]
+        is_apparel = any(k in g_name_lower for k in apparel_keywords) or bool(fiber_comp) or bool(app_size) or "cotton" in raw_text_lower or "polyester" in raw_text_lower
+        
+        food_keywords = [
+            "tea", "coffee", "biscuit", "cookie", "oil", "ghee", "butter", "milk", "curd", "paneer", 
+            "flour", "atta", "maida", "rice", "wheat", "dal", "pulse", "sugar", "salt", "spice", 
+            "masala", "juice", "drink", "beverage", "water", "snack", "namkeen", "chips", "chocolate", 
+            "sweet", "candy", "sauce", "ketchup", "jam", "honey", "noodle", "pasta", "cereal", "oats",
+            "bread", "cake", "food", "edible"
+        ]
+        is_food = (any(k in g_name_lower for k in food_keywords) or bool(fssai_no) or bool(nutrition_tbl) or bool(ing_text)) and not is_apparel
 
     # =========================================================================
     # 13 - 18: FSSAI FOOD & BEVERAGE COMPLIANCE CHECKS (FSSAI 2020)
@@ -726,7 +738,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             {"rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6, "status": fssai_6_res["status"], "explanation": fssai_6_res["explanation"]}
         ])
     else:
-        reason = f"Commodity '{g_name}' is not a food/beverage product."
+        reason = f"Commodity is not classified under Food & Beverage regulations."
         for r_id, cit, desc, sev, fix in [
             ("fssai_check_1", fcit1, fdesc1, fsev1, ffix1),
             ("fssai_check_2", fcit2, fdesc2, fsev2, ffix2),
@@ -764,13 +776,13 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             {"rule_id": "apparel_check_1", "rule_citation": acit1, "description": adesc1, "severity": asev1, "fix_suggestion": afix1, "status": app_1_res["status"], "explanation": app_1_res["explanation"]},
             {"rule_id": "apparel_check_2", "rule_citation": acit2, "description": adesc2, "severity": asev2, "fix_suggestion": afix2, "status": app_2_res["status"], "explanation": app_2_res["explanation"]},
             {"rule_id": "apparel_check_3", "rule_citation": acit3, "description": adesc3, "severity": asev3, "fix_suggestion": afix3, "status": app_3_res["status"], "explanation": app_3_res["explanation"]},
-            {"rule_id": "apparel_check_4", "rule_citation": acit4, "description": adesc4, "severity": asev4, "fix_suggestion": afix4, "status": app_4_res["status"], "explanation": app_4_res["explanation"]},
+            {"rule_id": "apparel_check_4", "rule_citation": acit4, "description": adesc4, "severity": adesc4, "fix_suggestion": afix4, "status": app_4_res["status"], "explanation": app_4_res["explanation"]},
             {"rule_id": "apparel_check_5", "rule_citation": acit5, "description": adesc5, "severity": asev5, "fix_suggestion": afix5, "status": app_5_res["status"], "explanation": app_5_res["explanation"]},
             {"rule_id": "apparel_check_6", "rule_citation": acit6, "description": adesc6, "severity": asev6, "fix_suggestion": afix6, "status": app_6_res["status"], "explanation": app_6_res["explanation"]},
             {"rule_id": "apparel_check_7", "rule_citation": acit7, "description": adesc7, "severity": asev7, "fix_suggestion": afix7, "status": app_7_res["status"], "explanation": app_7_res["explanation"]}
         ])
     else:
-        reason = f"Commodity '{g_name}' is not an apparel or textile product."
+        reason = f"Commodity is not classified under Apparel & Textile regulations."
         for r_id, cit, desc, sev, fix in [
             ("apparel_check_1", acit1, adesc1, asev1, afix1),
             ("apparel_check_2", acit2, adesc2, asev2, afix2),

@@ -53,6 +53,9 @@ export default function Dashboard() {
   const [emailInput, setEmailInput] = useState("salina.inspector@lm.gov.in");
   const [passwordInput, setPasswordInput] = useState("••••••••");
 
+  // Regulatory Domain Category State
+  const [selectedCategory, setSelectedCategory] = useState<"food" | "apparel" | "general">("food");
+
   // Navigation & Data
   const [history, setHistory] = useState<ScanSummary[]>([]);
   const [selectedScan, setSelectedScan] = useState<ScanDetail | null>(null);
@@ -128,11 +131,10 @@ export default function Dashboard() {
     "Computing FFT variance & ELA compression error maps...",
     "Evaluating AI Deepfake classifier...",
     "Detecting packaged retail objects (YOLOv8)...",
+    `Routing to ${selectedCategory.toUpperCase()} regulatory engine...`,
     "Running multilingual OCR (English & Hindi)...",
-    "Extracting Legal Metrology, FSSAI Food, & Textile metadata...",
-    "Executing Fiber 100% Math Validator & Metric Size Engine...",
-    "Verifying 3-Tier FSSAI FoSCoS License Registry...",
-    "Executing statutory rule engine (25 checks)...",
+    "Extracting domain-specific statutory declarations...",
+    "Executing statutory rule checks...",
     "Assembling report & compiling PDF..."
   ];
 
@@ -151,7 +153,7 @@ export default function Dashboard() {
           return prev;
         }
       });
-    }, 400);
+    }, 380);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,6 +163,7 @@ export default function Dashboard() {
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("category", selectedCategory);
 
     triggerScanProgress(async () => {
       try {
@@ -191,6 +194,7 @@ export default function Dashboard() {
 
     const formData = new FormData();
     formData.append("url", inputUrl);
+    formData.append("category", selectedCategory);
 
     triggerScanProgress(async () => {
       try {
@@ -244,6 +248,7 @@ export default function Dashboard() {
 
       const formData = new FormData();
       formData.append("file", blob, "webcam_capture.jpg");
+      formData.append("category", selectedCategory);
 
       triggerScanProgress(async () => {
         try {
@@ -340,10 +345,58 @@ export default function Dashboard() {
       <div className="flex-1 grid grid-cols-12 overflow-hidden h-[calc(screen-14)]">
         {/* Left Side: Operations */}
         <section className="col-span-4 border-r border-[#262626] bg-[#0A0A0A] p-6 space-y-6 overflow-y-auto flex flex-col h-full">
+          {/* 3-Category Regulatory Domain Selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase flex items-center justify-between">
+              <span>Target Category</span>
+              <span className="text-[10px] text-[#10B981] lowercase">required for audit routing</span>
+            </label>
+            <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#0F0F0F] border border-[#262626] rounded text-xs font-mono">
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("food")}
+                className={`py-2 px-1 rounded transition text-center flex flex-col items-center gap-0.5 ${
+                  selectedCategory === "food"
+                    ? "bg-[#10B981] text-[#0A0A0A] font-bold shadow"
+                    : "text-[#A3A3A3] hover:text-[#EDEDED] hover:bg-[#151515]"
+                }`}
+              >
+                <span>🍏 Food & Bev</span>
+                <span className="text-[9px] opacity-80">FSSAI 2020</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("apparel")}
+                className={`py-2 px-1 rounded transition text-center flex flex-col items-center gap-0.5 ${
+                  selectedCategory === "apparel"
+                    ? "bg-[#EC4899] text-[#0A0A0A] font-bold shadow"
+                    : "text-[#A3A3A3] hover:text-[#EDEDED] hover:bg-[#151515]"
+                }`}
+              >
+                <span>👕 Apparel</span>
+                <span className="text-[9px] opacity-80">Textile 2011</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("general")}
+                className={`py-2 px-1 rounded transition text-center flex flex-col items-center gap-0.5 ${
+                  selectedCategory === "general"
+                    ? "bg-[#3B82F6] text-[#0A0A0A] font-bold shadow"
+                    : "text-[#A3A3A3] hover:text-[#EDEDED] hover:bg-[#151515]"
+                }`}
+              >
+                <span>📦 General</span>
+                <span className="text-[9px] opacity-80">Legal Metro</span>
+              </button>
+            </div>
+          </div>
+
           {/* Uploader Section */}
           <div className="space-y-3">
             <h2 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-              Audit Input
+              Upload / Camera Scan
             </h2>
 
             {webcamActive ? (
@@ -505,7 +558,7 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full border-2 border-[#262626] border-t-[#10B981] animate-spin"></div>
               <div className="space-y-2 max-w-md">
                 <h3 className="font-mono text-sm font-bold text-[#EDEDED]">
-                  Executing Full Statutory Audit (25 Rules)
+                  Executing Full Statutory Audit
                 </h3>
                 <p className="text-xs text-[#10B981] font-mono">
                   {PIPELINE_STEPS[scanStep]}
@@ -644,7 +697,7 @@ export default function Dashboard() {
                           Fully Compliant with Statutory Regulations
                         </div>
                         <p className="text-[11px] font-mono text-[#A3A3A3]">
-                          All statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, Fiber/Size, Food Safety) verified successfully across 25 legal parameters.
+                          All statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, Fiber/Size, Food Safety) verified successfully.
                         </p>
                       </div>
                     </div>
@@ -845,7 +898,7 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Statutory Checklist Table (25 Checks: LM + FSSAI + Textile) */}
+              {/* Statutory Checklist Table (25 Checks) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
@@ -959,7 +1012,7 @@ export default function Dashboard() {
                   No Audit Selected
                 </h3>
                 <p className="text-xs max-w-sm mx-auto font-mono">
-                  Select a past scan log from the compliance history sidebar, upload a product label photo, or paste an e-commerce URL to execute a new audit.
+                  Select a category above, then upload a product label photo, capture with live camera, or paste an e-commerce listing URL.
                 </p>
               </div>
             </div>
