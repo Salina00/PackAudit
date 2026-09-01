@@ -4,6 +4,13 @@ import { useEffect, useState, useRef } from "react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
+interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+}
+
 interface Field {
   field_name: string;
   field_value: string | null;
@@ -47,11 +54,19 @@ interface ScanSummary {
 }
 
 export default function Dashboard() {
-  // Officer Session State (Mock Auth)
-  const [inspectorName, setInspectorName] = useState<string>("Inspector Salina");
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [emailInput, setEmailInput] = useState("salina.inspector@lm.gov.in");
-  const [passwordInput, setPasswordInput] = useState("••••••••");
+  // Consumer Auth State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+
+  // Auth Form State
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Regulatory Domain Category State
   const [selectedCategory, setSelectedCategory] = useState<"food" | "apparel" | "general">("food");
@@ -59,7 +74,7 @@ export default function Dashboard() {
   // Navigation & Data
   const [history, setHistory] = useState<ScanSummary[]>([]);
   const [selectedScan, setSelectedScan] = useState<ScanDetail | null>(null);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Scanning State
   const [scanning, setScanning] = useState(false);
@@ -74,39 +89,36 @@ export default function Dashboard() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Initialize Officer from LocalStorage
+  // Restore authenticated session from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem("packaudit_inspector");
-    if (saved) {
-      setInspectorName(saved);
+    try {
+      const stored = localStorage.getItem("packaudit_consumer_user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed && parsed.email) {
+          setCurrentUser(parsed);
+        }
+      }
+    } catch {
+      localStorage.removeItem("packaudit_consumer_user");
+    } finally {
+      setAuthChecking(false);
     }
   }, []);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    let name = "Inspector Salina";
-    if (emailInput.trim()) {
-      const prefix = emailInput.split("@")[0].replace(/[\._\-]/g, " ");
-      name = prefix
-        .split(" ")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-      if (!name.toLowerCase().startsWith("inspector")) {
-        name = `Inspector ${name}`;
-      }
-    }
-    setInspectorName(name);
-    localStorage.setItem("packaudit_inspector", name);
-    setLoginModalOpen(false);
-  };
+  // Password validation rules
+  const hasMinLength = password.length >= 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>\-_+=\[\]]/.test(password);
+  const passwordsMatch = password.length > 0 && password === confirmPassword;
 
-  const handleQuickLogin = (name: string) => {
-    setInspectorName(name);
-    localStorage.setItem("packaudit_inspector", name);
-    setLoginModalOpen(false);
-  };
+  const validScore = [hasMinLength, hasUpperCase, hasLowerCase, hasDigit, hasSpecialChar].filter(Boolean).length;
+  const isPasswordValid = validScore === 5;
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
-  // Load Scan History
+  // Load Scan History when logged in
   const loadHistory = () => {
     setLoadingHistory(true);
     fetch(`${API_BASE}/api/scans/history`)
@@ -125,8 +137,76 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+    if (currentUser) {
+      loadHistory();
+    }
+  }, [currentUser]);
+
+  // Handle Login & Signup Submit
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+
+    // Client-side validations
+    if (!isEmailValid) {
+      setAuthError("Please enter a valid email address (e.g. name@domain.com).");
+      return;
+    }
+
+    if (authMode === "signup") {
+      if (!fullName.trim()) {
+        setAuthError("Please enter your full name.");
+        return;
+      }
+      if (!isPasswordValid) {
+        setAuthError("Password does not meet the security requirements.");
+        return;
+      }
+      if (!passwordsMatch) {
+        setAuthError("Passwords do not match. Please re-enter.");
+        return;
+      }
+    }
+
+    setAuthLoading(true);
+    const endpoint = authMode === "signup" ? "/api/auth/signup" : "/api/auth/login";
+    const payload = authMode === "signup" 
+      ? { email: email.trim().toLowerCase(), full_name: fullName.trim(), password }
+      : { email: email.trim().toLowerCase(), password };
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Authentication failed. Please check your details.");
+      }
+
+      const user: User = data.user;
+      setCurrentUser(user);
+      localStorage.setItem("packaudit_consumer_user", JSON.stringify(user));
+      if (data.access_token) {
+        localStorage.setItem("packaudit_token", data.access_token);
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "Unable to complete request. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem("packaudit_consumer_user");
+    localStorage.removeItem("packaudit_token");
+    setCurrentUser(null);
+    setSelectedScan(null);
+    setPassword("");
+    setConfirmPassword("");
+  };
 
   // Set scanning steps labels
   const PIPELINE_STEPS = [
@@ -146,7 +226,6 @@ export default function Dashboard() {
     setScanStep(0);
     setScanError(null);
 
-    // Animate progress smoothly while request processes
     const interval = setInterval(() => {
       setScanStep((prev) => (prev < PIPELINE_STEPS.length - 2 ? prev + 1 : prev));
     }, 450);
@@ -268,20 +347,286 @@ export default function Dashboard() {
     return { text: "COMPLIANT", class: "border-[#10B981]/20 bg-[#10B981]/5 text-[#10B981]" };
   };
 
+  if (authChecking) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-[#0A0A0A] text-[#EDEDED] font-mono text-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-4 h-4 border-2 border-[#10B981] border-t-transparent rounded-full animate-spin"></div>
+          <span>Loading PackAudit Consumer Portal...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is not logged in, render Consumer Login / Signup Screen
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-[#070707] text-[#EDEDED] flex flex-col justify-between selection:bg-[#10B981]/30">
+        {/* Top Navbar */}
+        <header className="h-16 border-b border-[#1F1F1F] bg-[#0A0A0A] flex items-center justify-between px-8">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-center text-[#10B981] font-mono font-bold text-sm">
+              🛡️
+            </div>
+            <div>
+              <span className="font-mono text-sm font-bold tracking-tight text-[#EDEDED] block">
+                PACKAUDIT
+              </span>
+              <span className="text-[10px] font-mono text-[#737373] block">
+                Consumer Legal Metrology & Food Safety
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono text-xs text-[#737373]">
+            <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
+            <span>Consumer Protection Portal</span>
+          </div>
+        </header>
+
+        {/* Center Auth Card */}
+        <main className="flex-1 flex items-center justify-center p-6">
+          <div className="w-full max-w-md bg-[#0F0F0F] border border-[#262626] rounded-xl p-8 shadow-2xl space-y-6">
+            <div className="space-y-2 text-center">
+              <span className="text-[10px] font-mono font-bold tracking-wider uppercase px-2.5 py-1 rounded-full bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                Citizen & Consumer Access
+              </span>
+              <h1 className="text-xl font-bold font-mono text-[#EDEDED] tracking-tight mt-2">
+                {authMode === "login" ? "Sign in to PackAudit" : "Create Consumer Account"}
+              </h1>
+              <p className="text-xs text-[#737373] font-mono">
+                {authMode === "login"
+                  ? "Verify packaged goods, check MRP compliance, and detect tampered labels."
+                  : "Join PackAudit to audit consumer packaging, check FSSAI licenses, and verify fiber blends."}
+              </p>
+            </div>
+
+            {/* Mode Switch Tabs */}
+            <div className="grid grid-cols-2 p-1 bg-[#141414] border border-[#262626] rounded-lg font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => { setAuthMode("login"); setAuthError(null); }}
+                className={`py-2 rounded-md transition font-medium ${
+                  authMode === "login"
+                    ? "bg-[#10B981] text-[#0A0A0A] font-bold shadow"
+                    : "text-[#737373] hover:text-[#EDEDED]"
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode("signup"); setAuthError(null); }}
+                className={`py-2 rounded-md transition font-medium ${
+                  authMode === "signup"
+                    ? "bg-[#10B981] text-[#0A0A0A] font-bold shadow"
+                    : "text-[#737373] hover:text-[#EDEDED]"
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            {/* Error Banner */}
+            {authError && (
+              <div className="p-3 bg-[#DC2626]/10 border border-[#DC2626]/30 rounded-lg text-xs font-mono text-[#EF4444] flex items-start gap-2">
+                <span className="shrink-0 font-bold">⚠️</span>
+                <span className="leading-snug">{authError}</span>
+              </div>
+            )}
+
+            {/* Authentication Form */}
+            <form onSubmit={handleAuthSubmit} className="space-y-4 font-mono text-xs">
+              {authMode === "signup" && (
+                <div className="space-y-1.5">
+                  <label className="text-[#A3A3A3] font-medium flex justify-between">
+                    <span>Full Name</span>
+                    <span className="text-[#737373] text-[10px]">required</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="e.g. Salina Tamboli"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#141414] border border-[#262626] text-[#EDEDED] focus:border-[#10B981] focus:outline-none transition"
+                  />
+                </div>
+              )}
+
+              {/* Email Input */}
+              <div className="space-y-1.5">
+                <label className="text-[#A3A3A3] font-medium flex justify-between">
+                  <span>Email Address</span>
+                  {email.length > 0 && (
+                    <span className={`text-[10px] ${isEmailValid ? "text-[#10B981]" : "text-[#EF4444]"}`}>
+                      {isEmailValid ? "✓ Valid email format" : "✕ Invalid format"}
+                    </span>
+                  )}
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@example.com"
+                  className={`w-full px-3.5 py-2.5 rounded-lg bg-[#141414] border text-[#EDEDED] focus:outline-none transition ${
+                    email.length > 0
+                      ? isEmailValid
+                        ? "border-[#10B981]/50 focus:border-[#10B981]"
+                        : "border-[#DC2626]/50 focus:border-[#DC2626]"
+                      : "border-[#262626] focus:border-[#10B981]"
+                  }`}
+                />
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <label className="text-[#A3A3A3] font-medium flex justify-between">
+                  <span>Password</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="text-[#737373] hover:text-[#EDEDED] text-[10px]"
+                  >
+                    {showPassword ? "Hide" : "Show"}
+                  </button>
+                </label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your secure password"
+                  className="w-full px-3.5 py-2.5 rounded-lg bg-[#141414] border border-[#262626] text-[#EDEDED] focus:border-[#10B981] focus:outline-none transition"
+                />
+              </div>
+
+              {/* Password Requirement Checklist (Shown on Signup) */}
+              {authMode === "signup" && (
+                <div className="space-y-2 p-3 bg-[#141414] border border-[#262626] rounded-lg text-[11px]">
+                  <div className="flex justify-between items-center text-[#737373]">
+                    <span>Password Strength:</span>
+                    <span className={`font-bold ${
+                      validScore === 5 ? "text-[#10B981]" : validScore >= 3 ? "text-[#F59E0B]" : "text-[#EF4444]"
+                    }`}>
+                      {validScore === 5 ? "Strong" : validScore >= 3 ? "Moderate" : "Weak"}
+                    </span>
+                  </div>
+
+                  {/* Strength Bar */}
+                  <div className="w-full h-1 bg-[#262626] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-300 ${
+                        validScore === 5 ? "bg-[#10B981]" : validScore >= 3 ? "bg-[#F59E0B]" : "bg-[#EF4444]"
+                      }`}
+                      style={{ width: `${(validScore / 5) * 100}%` }}
+                    ></div>
+                  </div>
+
+                  {/* Requirements grid */}
+                  <div className="grid grid-cols-2 gap-1 text-[10px] pt-1">
+                    <span className={hasMinLength ? "text-[#10B981]" : "text-[#737373]"}>
+                      {hasMinLength ? "✓" : "○"} 8+ characters
+                    </span>
+                    <span className={hasUpperCase ? "text-[#10B981]" : "text-[#737373]"}>
+                      {hasUpperCase ? "✓" : "○"} 1 uppercase (A-Z)
+                    </span>
+                    <span className={hasLowerCase ? "text-[#10B981]" : "text-[#737373]"}>
+                      {hasLowerCase ? "✓" : "○"} 1 lowercase (a-z)
+                    </span>
+                    <span className={hasDigit ? "text-[#10B981]" : "text-[#737373]"}>
+                      {hasDigit ? "✓" : "○"} 1 number (0-9)
+                    </span>
+                    <span className={`col-span-2 ${hasSpecialChar ? "text-[#10B981]" : "text-[#737373]"}`}>
+                      {hasSpecialChar ? "✓" : "○"} 1 special symbol (@, #, $, %, etc.)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirm Password (Shown on Signup) */}
+              {authMode === "signup" && (
+                <div className="space-y-1.5">
+                  <label className="text-[#A3A3A3] font-medium flex justify-between">
+                    <span>Confirm Password</span>
+                    {confirmPassword.length > 0 && (
+                      <span className={`text-[10px] ${passwordsMatch ? "text-[#10B981]" : "text-[#EF4444]"}`}>
+                        {passwordsMatch ? "✓ Passwords match" : "✕ Passwords do not match"}
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter your password"
+                    className="w-full px-3.5 py-2.5 rounded-lg bg-[#141414] border border-[#262626] text-[#EDEDED] focus:border-[#10B981] focus:outline-none transition"
+                  />
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={authLoading}
+                className="w-full py-3 rounded-lg bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold font-mono transition text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-[#0A0A0A] border-t-transparent rounded-full animate-spin"></div>
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <span>{authMode === "login" ? "Sign In to Dashboard" : "Create Consumer Account"}</span>
+                )}
+              </button>
+            </form>
+
+            {/* Quick Demo Consumer Preset */}
+            <div className="pt-2 border-t border-[#1F1F1F] text-center space-y-2">
+              <span className="text-[10px] text-[#737373] font-mono block">
+                Quick Demo Preset:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("login");
+                  setEmail("salina.consumer@gmail.com");
+                  setPassword("SecurePassword@2026");
+                }}
+                className="text-[11px] font-mono text-[#10B981] hover:underline"
+              >
+                Auto-fill Demo Consumer Credentials
+              </button>
+            </div>
+          </div>
+        </main>
+
+        {/* Footer */}
+        <footer className="h-12 border-t border-[#1F1F1F] bg-[#0A0A0A] flex items-center justify-between px-8 text-xs font-mono text-[#737373]">
+          <span>Legal Metrology Act 2009 | FSSAI Regulations 2020</span>
+          <span>PackAudit v1.0.0</span>
+        </footer>
+      </div>
+    );
+  }
+
+  // Main Consumer Dashboard when logged in
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-[#0A0A0A] text-[#EDEDED]">
       {/* Top Console Bar */}
       <header className="h-14 border-b border-[#262626] bg-[#0A0A0A] flex items-center justify-between px-6 z-10">
         <div className="flex items-center gap-3">
           <span className="font-mono text-sm font-bold tracking-tight text-[#EDEDED]">
-            PACKAUDIT CONSOLE
+            PACKAUDIT CONSUMER PORTAL
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-[#10B981]/10 text-[#10B981] font-mono">
             LM + FSSAI + TEXTILE
           </span>
         </div>
 
-        {/* Database & Officer Info */}
+        {/* Database & Consumer Profile */}
         <div className="flex items-center gap-4 text-xs font-mono">
           <div className="flex items-center gap-1.5 text-[#737373]">
             <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
@@ -291,13 +636,13 @@ export default function Dashboard() {
           <div className="h-4 w-px bg-[#262626]"></div>
 
           <div className="flex items-center gap-2">
-            <span className="text-[#A3A3A3]">Officer:</span>
-            <span className="text-[#10B981] font-bold">{inspectorName}</span>
+            <span className="text-[#A3A3A3]">Consumer:</span>
+            <span className="text-[#10B981] font-bold">{currentUser.full_name}</span>
             <button
-              onClick={() => setLoginModalOpen(true)}
-              className="text-[10px] text-[#737373] hover:text-[#EDEDED] border border-[#262626] hover:border-[#333333] px-2 py-0.5 rounded transition"
+              onClick={handleSignOut}
+              className="text-[10px] text-[#EF4444] hover:text-[#FF6B6B] border border-[#DC2626]/30 hover:border-[#DC2626]/60 px-2 py-0.5 rounded transition ml-2"
             >
-              Switch Officer
+              Sign Out
             </button>
           </div>
         </div>
@@ -573,7 +918,7 @@ export default function Dashboard() {
                     Statutory Compliance Report
                   </h2>
                   <p className="text-xs text-[#737373] mt-1 font-mono">
-                    Scan ID: {selectedScan.id} | Audited by: <span className="text-[#EDEDED] font-bold">{inspectorName}</span> | {new Date(selectedScan.created_at).toLocaleString()}
+                    Scan ID: {selectedScan.id} | Audited for: <span className="text-[#EDEDED] font-bold">{currentUser.full_name}</span> | {new Date(selectedScan.created_at).toLocaleString()}
                   </p>
                 </div>
 
@@ -894,7 +1239,7 @@ export default function Dashboard() {
                       <tr className="border-b border-[#262626] bg-[#151515] text-[#A3A3A3] font-bold">
                         <th className="p-3">Citation & Law</th>
                         <th className="p-3">Status</th>
-                        <th className="p-3">Audit Details & Auto-Fix Guidance</th>
+                        <th className="p-3">Audit Details & Guidance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#262626]">
@@ -943,7 +1288,7 @@ export default function Dashboard() {
                               {check.status === "fail" && check.fix_suggestion && (
                                 <div className="text-[11px] text-[#10B981] font-mono bg-[#10B981]/5 border border-[#10B981]/20 rounded p-2 flex items-start gap-1.5">
                                   <span className="font-bold shrink-0">
-                                    💡 Fix Guidance:
+                                    💡 Consumer Tip:
                                   </span>
                                   <span className="leading-snug">
                                     {check.fix_suggestion}
@@ -977,98 +1322,16 @@ export default function Dashboard() {
               </svg>
               <div className="space-y-1">
                 <h3 className="font-mono text-sm font-bold text-[#A3A3A3]">
-                  No Audit Selected
+                  No Product Audit Selected
                 </h3>
                 <p className="text-xs max-w-sm mx-auto font-mono">
-                  Select a category above, then upload a product label photo, capture with live camera, or paste an e-commerce listing URL.
+                  Select a category above, then upload a product label photo, snap with live camera, or paste an e-commerce listing URL to audit.
                 </p>
               </div>
             </div>
           )}
         </section>
       </div>
-
-      {/* Lightweight Mock Officer Authentication Modal */}
-      {loginModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-md border border-[#262626] bg-[#0A0A0A] rounded p-6 space-y-5 shadow-2xl">
-            <div className="space-y-1 text-center">
-              <span className="text-[10px] font-mono font-bold tracking-wider uppercase px-2 py-0.5 rounded bg-[#10B981]/10 text-[#10B981]">
-                Legal Metrology Directorate & FSSAI
-              </span>
-              <h2 className="text-lg font-bold font-mono text-[#EDEDED] mt-2">
-                Inspector Authentication
-              </h2>
-              <p className="text-xs text-[#737373] font-mono">
-                Sign in to record compliance audit trails with official officer signature credentials.
-              </p>
-            </div>
-
-            <form onSubmit={handleLoginSubmit} className="space-y-3 text-xs font-mono">
-              <div className="space-y-1">
-                <label className="text-[#A3A3A3]">Inspector Email / ID</label>
-                <input
-                  type="email"
-                  required
-                  value={emailInput}
-                  onChange={(e) => setEmailInput(e.target.value)}
-                  placeholder="e.g. salina.inspector@lm.gov.in"
-                  className="w-full px-3 py-2 rounded bg-[#0F0F0F] border border-[#262626] text-[#EDEDED] focus:border-[#10B981] focus:outline-none"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[#A3A3A3]">Password / Access Token</label>
-                <input
-                  type="password"
-                  required
-                  value={passwordInput}
-                  onChange={(e) => setPasswordInput(e.target.value)}
-                  className="w-full px-3 py-2 rounded bg-[#0F0F0F] border border-[#262626] text-[#EDEDED] focus:border-[#10B981] focus:outline-none"
-                />
-              </div>
-
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLoginModalOpen(false)}
-                  className="flex-1 py-2 rounded bg-[#1A1A1A] hover:bg-[#262626] text-[#EDEDED] font-bold transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 rounded bg-[#10B981] hover:bg-[#059669] text-[#0A0A0A] font-bold transition"
-                >
-                  Sign In
-                </button>
-              </div>
-            </form>
-
-            <div className="pt-3 border-t border-[#262626] space-y-2 text-center">
-              <span className="text-[10px] text-[#737373] font-mono block">
-                Quick Demo Presets:
-              </span>
-              <div className="flex gap-2 justify-center">
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("Inspector Salina (LM-DEL-042)")}
-                  className="px-2.5 py-1 text-[11px] font-mono rounded bg-[#151515] border border-[#262626] text-[#10B981] hover:bg-[#202020]"
-                >
-                  Inspector Salina
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickLogin("Sr. Inspector Rajesh (LM-HQ)")}
-                  className="px-2.5 py-1 text-[11px] font-mono rounded bg-[#151515] border border-[#262626] text-[#EDEDED] hover:bg-[#202020]"
-                >
-                  Sr. Inspector Rajesh
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

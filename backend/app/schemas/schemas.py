@@ -2,6 +2,30 @@ from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+class UserCreate(BaseModel):
+    email: str
+    full_name: str
+    password: str
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class AuthTokenResponse(BaseModel):
+    user: UserResponse
+    access_token: str
+    token_type: str = "bearer"
+
 class RuleDefinitionResponse(BaseModel):
     rule_id: str
     rule_citation: str

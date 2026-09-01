@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
-from backend.app.api import scans, rules
+from backend.app.api import scans, rules, auth
 
 app = FastAPI(
     title="PackAudit API",
@@ -32,6 +32,7 @@ os.makedirs(os.path.join(static_dir, "reports"), exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Mount API Routers
+app.include_router(auth.router)
 app.include_router(scans.router)
 app.include_router(rules.router)
 
