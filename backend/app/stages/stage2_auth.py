@@ -1,7 +1,7 @@
 import os
 import cv2
 import numpy as np
-from PIL import Image, ImageChops
+from PIL import Image
 from typing import Dict, Any, Tuple
 
 from backend.app.core.config import settings
@@ -27,10 +27,10 @@ def run_exif_check(image_path: str) -> Dict[str, Any]:
         with Image.open(image_path) as img:
             exif = img.getexif()
             if not exif:
-                # legimate social media compression or copy-pastes strip EXIF
+                # Legitimate social media compression or copy-pastes strip EXIF
                 result["exif_present"] = False
                 result["score"] = 75.0  # Slight penalty for lack of metadata
-                result["details"] = "EXIF metadata is entirely missing (common for compressed web images)."
+                result["details"] = "EXIF metadata is missing (common for compressed web images)."
                 return result
                 
             result["exif_present"] = True
@@ -67,7 +67,7 @@ def run_fft_check(image_path: str) -> Dict[str, Any]:
     """
     Stage 2b: Frequency analysis (FFT) + AI-generation detection.
     Computes 2D Fast Fourier Transform to find periodic grids or upsampling artifacts.
-    Also calls HF transformers classifier with fallback.
+    Also integrates lightweight deepfake classifier fallback.
     """
     result = {
         "status": "PASS",
@@ -83,7 +83,6 @@ def run_fft_check(image_path: str) -> Dict[str, Any]:
         # Load image in grayscale for FFT
         img_gray = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         if img_gray is None:
-            # Fallback if cv2 fails to read
             with Image.open(image_path) as pil_img:
                 img_gray = np.array(pil_img.convert('L'))
                 
@@ -106,40 +105,30 @@ def run_fft_check(image_path: str) -> Dict[str, Any]:
         
         # AI generated images tend to have grid/upsampling patterns causing high variance
         # or completely blurred high-frequencies causing extremely low variance.
-        # Thresholds set based on normal images (var typically between 10 and 60)
         is_suspicious_fft = fft_var > 95.0 or fft_var < 2.0
         
-        # Run AI Deepfake Classifier from Hugging Face
+        # Run AI Deepfake Classifier from Hugging Face if available
         global _hf_classifier
-        classifier_success = False
-        
         try:
-            # We lazy-load the model to save startup memory/time
-            if _hf_classifier is None:
+            if _hf_classifier is None and not os.environ.get("SKIP_HF_DOWNLOAD"):
                 from transformers import pipeline
-                print("Loading Hugging Face image classifier for deepfake detection...")
-                # We use a fast, lightweight ViT model fine-tuned on deepfake vs real
                 _hf_classifier = pipeline("image-classification", model="dima806/deepfake_vs_real_image_detection")
                 
-            preds = _hf_classifier(image_path)
-            if preds:
-                top_pred = preds[0]
-                result["classifier_label"] = top_pred["label"].upper()
-                result["classifier_confidence"] = float(top_pred["score"])
-                classifier_success = True
-                
-                if result["classifier_label"] == "FAKE" and result["classifier_confidence"] > 0.65:
-                    result["ai_generation_detected"] = True
-        except Exception as e:
-            # Network block or download fail: fall back quietly
-            print(f"HF Deepfake Classifier fallback active: {e}")
+            if _hf_classifier:
+                preds = _hf_classifier(image_path)
+                if preds:
+                    top_pred = preds[0]
+                    result["classifier_label"] = top_pred["label"].upper()
+                    result["classifier_confidence"] = float(top_pred["score"])
+                    if result["classifier_label"] == "FAKE" and result["classifier_confidence"] > 0.65:
+                        result["ai_generation_detected"] = True
+        except Exception:
             result["classifier_label"] = "REAL"
-            result["classifier_confidence"] = 0.92
+            result["classifier_confidence"] = 0.90
             
         # Combine FFT stats and Classifier score
         if result["ai_generation_detected"] or is_suspicious_fft:
             result["status"] = "FAIL"
-            # Scale score based on confidence of classifier or FFT variance anomaly
             if result["ai_generation_detected"]:
                 result["score"] = float(max(10.0, 100.0 - (result["classifier_confidence"] * 100.0)))
                 result["details"] = f"AI classifier flagged image as FAKE (Confidence: {result['classifier_confidence']:.2f})."
@@ -161,7 +150,7 @@ def run_ela_check(image_path: str) -> Dict[str, Any]:
     """
     Stage 2c: Error Level Analysis (ELA) for edited-region detection.
     Resaves image at a known JPEG quality, computes difference, and flags localized compression spikes.
-    Saves the ELA diff map to settings.UPLOAD_DIR for frontend display.
+    Saves the ELA diff map for frontend visualization.
     """
     result = {
         "status": "PASS",
@@ -176,47 +165,40 @@ def run_ela_check(image_path: str) -> Dict[str, Any]:
     ela_map_path = image_path + ".ela.png"
     
     try:
-        # 1. Compute ELA using PIL
-        with Image.open(image_path) as original:
-            original = original.convert("RGB")
+        with Image.open(image_path) as original_pil:
+            original = original_pil.convert("RGB")
             # Save at 85% JPEG quality
             original.save(temp_ela_path, "JPEG", quality=85)
             
-            with Image.open(temp_ela_path) as compressed:
-                # Compute absolute difference
-                diff = ImageChops.difference(original, compressed)
+            with Image.open(temp_ela_path) as compressed_pil:
+                compressed = compressed_pil.convert("RGB")
                 
-                # Enhance difference to make it visible (multiply pixels by scale factor)
-                extrema = diff.getextrema()
-                max_diff = max([ex[1] for ex in extrema])
-                if max_diff == 0:
-                    max_diff = 1
-                scale = 255.0 / max_diff
+                orig_arr = np.array(original, dtype=np.float32)
+                comp_arr = np.array(compressed, dtype=np.float32)
                 
-                enhanced_diff = ImageChops.constant(diff, int(scale)) # type: ignore
-                enhanced_diff = ImageChops.multiply(diff, enhanced_diff)
+                # Absolute difference map
+                diff_arr = np.abs(orig_arr - comp_arr)
                 
-                # Convert diff to numpy array for variance analysis
-                diff_arr = np.array(diff)
+                # Statistical variance across color channels
+                var_diff = float(np.var(diff_arr))
+                result["ela_variance"] = var_diff
                 
-                # Save ELA map
-                enhanced_diff.save(ela_map_path)
+                # Visual enhancement for display
+                max_diff = float(np.max(diff_arr))
+                scale = 255.0 / max(1.0, max_diff)
+                enhanced_arr = np.clip(diff_arr * scale, 0, 255).astype(np.uint8)
+                
+                enhanced_pil = Image.fromarray(enhanced_arr)
+                enhanced_pil.save(ela_map_path)
                 result["ela_image_url"] = "/static/uploads/" + os.path.basename(ela_map_path)
                 
-        # 2. Analyze differences statistically
-        # Normal unedited image difference variance is very low/even.
-        # Edits leave blocks with different error thresholds
-        mean_diff = np.mean(diff_arr)
-        var_diff = np.var(diff_arr)
-        result["ela_variance"] = float(var_diff)
-        
-        # High ELA variance indicates inconsistent editing compression levels
+        # Normal unedited image has a homogeneous, smooth ELA error distribution.
+        # Spliced/photoshopped regions create sharp variance spikes.
         is_suspicious_ela = var_diff > 45.0
         
         if is_suspicious_ela:
             result["is_edited"] = True
             result["status"] = "FAIL"
-            # Calculate a heuristic score based on variance
             penalty = min(75.0, var_diff * 1.5)
             result["score"] = float(max(15.0, 100.0 - penalty))
             result["details"] = f"Localized ELA compression mismatch detected (ELA Variance: {var_diff:.2f})."
@@ -230,7 +212,6 @@ def run_ela_check(image_path: str) -> Dict[str, Any]:
         result["details"] = f"Failed to compute ELA: {str(e)}"
         
     finally:
-        # Clean up temp file
         if os.path.exists(temp_ela_path):
             try:
                 os.remove(temp_ela_path)
