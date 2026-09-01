@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,8 @@ from reportlab.lib import colors
 
 from backend.app.models.models import Scan, ExtractedField, RuleCheck
 from backend.app.core.config import settings
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 def save_scan_results_to_db(
     db: Session,
@@ -46,7 +48,7 @@ def save_scan_results_to_db(
     
     # Save Extracted Fields
     for key, val in extracted_fields.items():
-        if key in ["listing_fields", "is_imported"]:
+        if key in ["listing_fields", "is_imported", "nutrition_facts"]:
             continue
             
         confidence = 0.95
@@ -83,7 +85,7 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     """
     Generates a crisp, executive SINGLE-PAGE PDF Product Compliance Report
     matching the exact 4-section format:
-    - Header: Report ID, Date & Time, Product Image
+    - Header: Report ID, Date & Time, Product Images (Front & Back)
     - 1. PRODUCT INFORMATION
     - 2. EXTRACTION RESULTS
     - 3. NON-COMPLIANCE / WARNINGS
@@ -165,39 +167,64 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     for f in (scan.fields or []):
         field_map[f.field_name] = f.field_value
         
-    created_dt_str = scan.created_at.strftime("%Y-%m-%d %H:%M:%S") if scan.created_at else datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    created_dt = scan.created_at
+    if created_dt:
+        if created_dt.tzinfo is None:
+            created_dt = created_dt.replace(tzinfo=timezone.utc).astimezone(IST)
+        else:
+            created_dt = created_dt.astimezone(IST)
+        created_dt_str = created_dt.strftime("%d/%m/%Y, %I:%M %p IST")
+    else:
+        created_dt_str = datetime.now(IST).strftime("%d/%m/%Y, %I:%M %p IST")
     
-    # Check if a product image exists for thumbnail
-    img_element = None
+    # Multi-image thumbnail handler (supports Front & Back side captures)
+    img_elements = []
     if scan.image_path:
-        local_img_path = scan.image_path
-        if local_img_path.startswith("/static/"):
-            local_img_path = os.path.join(settings.BASE_DIR, local_img_path.lstrip("/"))
-            
-        if os.path.exists(local_img_path):
-            try:
-                img_element = RLImage(local_img_path, width=70, height=48)
-            except Exception:
-                img_element = None
+        raw_paths = scan.image_path.split(",")
+        for rp in raw_paths:
+            local_img_path = rp.strip()
+            if local_img_path.startswith("/static/"):
+                local_img_path = os.path.join(settings.BASE_DIR, local_img_path.lstrip("/"))
                 
-    if not img_element:
-        img_element = Paragraph("<i>[E-Commerce URL]</i>", small_style)
+            if os.path.exists(local_img_path):
+                try:
+                    w_box = 54 if len(raw_paths) > 1 else 75
+                    h_box = 44
+                    img_elements.append(RLImage(local_img_path, width=w_box, height=h_box))
+                except Exception:
+                    pass
+                    
+    if img_elements:
+        if len(img_elements) == 1:
+            img_container = img_elements[0]
+        else:
+            # Place side-by-side in mini table
+            img_container = Table([[img_elements[0], img_elements[1]]], colWidths=[58, 58])
+            img_container.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 1),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 1),
+                ('TOPPADDING', (0, 0), (-1, -1), 0),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ]))
+    else:
+        img_container = Paragraph("<i>[E-Commerce Listing]</i>", small_style)
         
     # ─────────────────────────────────────────────────────────────
-    # HEADER BOX (Report ID, Date & Time, Product Image)
+    # HEADER BOX (Report ID, Date & Time, Product Images)
     # ─────────────────────────────────────────────────────────────
     header_meta_data = [
         [
             Paragraph(f"<b>Report ID:</b> {scan.id}", val_style),
-            Paragraph("<b>Product Image:</b>", lbl_style)
+            Paragraph("<b>Product Image(s):</b>", lbl_style)
         ],
         [
             Paragraph(f"<b>Date &amp; Time:</b> {created_dt_str} | <b>Target:</b> {(scan.object_classification or 'Retail Package').replace('_', ' ').title()}", val_style),
-            img_element
+            img_container
         ]
     ]
     
-    header_table = Table(header_meta_data, colWidths=[450, 114])
+    header_table = Table(header_meta_data, colWidths=[430, 134])
     header_table.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#CBD5E1')),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
@@ -265,7 +292,6 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
             [Paragraph("OCR Text Scan", lbl_style), Paragraph("<i>No text regions extracted from image.</i>", val_style), Paragraph("0.0%", val_style)]
         ], colWidths=[160, 310, 94])
     else:
-        # Group fields into compact 2-pair rows to conserve vertical space
         ext_rows = [
             [
                 Paragraph("<b>Statutory Field</b>", lbl_style), Paragraph("<b>Value</b>", lbl_style), Paragraph("<b>Conf</b>", lbl_style),
@@ -339,7 +365,6 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
             ]
         ]
         
-        # Show top 4 most critical issues to guarantee strict single page budget
         for c in non_comp_checks[:4]:
             citation = c.get("rule_citation", c.get("rule_id", "Statutory Rule"))
             status = c.get("status", "fail").upper()

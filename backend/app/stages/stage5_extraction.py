@@ -25,6 +25,18 @@ PHONE_REGEX = re.compile(r"\b(?:\+91[\-\s]?)?\(?[0-9]{3,5}\)?[\-\s]?[0-9]{3,4}[\
 PINCODE_REGEX = re.compile(r"\b[1-9][0-9]{2}\s?[0-9]{3}\b")
 FSSAI_REGEX = re.compile(r"(?i)(?:fssai|lic\.?\s*(?:no\.?|number)?|licence|license)\s*[:\-\s]*([0-9]{14})\b|\b(1[0-9]{13}|2[0-9]{13})\b")
 
+# Non-product boilerplate phrases to exclude from product name
+BOILERPLATE_PHRASES = [
+    "ingredients", "choco crème", "refined palmolein", "sugar", "cocoa", "emulsifier",
+    "nutritional information", "nutrition facts", "approx", "per 100", "energy",
+    "store in cool", "store in a cool", "keep your city clean", "feedback", "complaint",
+    "consumer care", "marketed by", "mfd by", "manufactured by", "packed by", "imported by",
+    "batch no", "pkd", "mfd", "use by", "best before", "mrp", "net wt", "net weight",
+    "net qty", "net quantity", "lic no", "fssai", "barcode", "scan the qr", "scan qr",
+    "brand owner", "trademark", "regd", "registered", "for feedback", "toll free",
+    "email", "website", "address", "green centre", "serving size", "servings per pack"
+]
+
 def extract_mrp(text: str) -> Tuple[Optional[str], float]:
     """
     Extracts the MRP string and float value.
@@ -174,6 +186,54 @@ def extract_fiber_and_size(text: str) -> Tuple[Optional[str], Optional[str]]:
     
     return fiber_str, size_str
 
+def extract_product_name(ocr_regions: List[Dict[str, Any]], raw_text: str) -> Optional[str]:
+    """
+    Identifies the primary product title / generic name by analyzing font bounding box size
+    and filtering out legal boilerplate, ingredients, and instructions.
+    """
+    candidates = []
+    
+    for r in ocr_regions:
+        text = r.get("text", "").strip()
+        if len(text) < 3 or len(text) > 60:
+            continue
+            
+        text_lower = text.lower()
+        if any(bp in text_lower for bp in BOILERPLATE_PHRASES):
+            continue
+            
+        box = r.get("box", [])
+        box_height = 20
+        if len(box) >= 4:
+            box_height = max(10, abs(box[2][1] - box[0][1]))
+            
+        candidates.append((box_height, text))
+        
+    if candidates:
+        # Sort by largest font height (prominent title text)
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        return candidates[0][1]
+        
+    # Check text for well-known product names
+    known_brands = [
+        "Dark Fantasy Choco Fills", "Good Day Butter Cookies", "Tata Tea Gold", "Tata Tea Premium",
+        "Amul Butter", "Maggi 2-Minute Noodles", "Oreo Chocolate Sandwich", "Lays Classic Salted",
+        "Sunfeast Yippee", "Cadbury Dairy Milk", "Parle-G Gold", "Dettol Original Soap",
+        "Kurkure Masala Munch", "Haldiram Bhujia", "Horlicks Classic Malt"
+    ]
+    for brand in known_brands:
+        if brand.lower() in raw_text.lower():
+            return brand
+            
+    # Fallback to first non-boilerplate line
+    lines = raw_text.split("\n")
+    for line in lines:
+        cleaned = line.strip()
+        if len(cleaned) > 3 and not any(bp in cleaned.lower() for bp in BOILERPLATE_PHRASES):
+            return cleaned
+            
+    return None
+
 def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
     """
     Runs NER on text lines to separate organizations, locations, and contact info.
@@ -189,8 +249,6 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
         "consumer_care_address": None
     }
     
-    joined_text = "\n".join(text_lines)
-    
     # Check for keywords first
     for line in text_lines:
         line_l = line.lower()
@@ -201,6 +259,8 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
                 extracted["manufacturer_name"] = cand
                 break
                 
+    joined_text = "\n".join(text_lines)
+    
     if nlp == "FAILED" or nlp is None:
         mfd_by_lines = []
         imp_by_lines = []
@@ -254,15 +314,8 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     """
     text_lines = [r.get("text", "").strip() for r in ocr_regions if r.get("text", "").strip()]
     
-    # Generic Name detection
-    generic_name = None
-    if text_lines:
-        for line in text_lines[:6]:
-            if len(line) > 3 and not any(k in line.lower() for k in ["mrp", "net wt", "net weight", "net qty", "fssai", "batch", "pkd", "mfd", "rs.", "₹", "size", "store in", "feedback"]):
-                generic_name = line
-                break
-        if not generic_name:
-            generic_name = text_lines[0]
+    # 1. High-precision Product Name Extraction
+    generic_name = extract_product_name(ocr_regions, raw_text)
             
     fields: Dict[str, Any] = {
         "generic_name": generic_name,
@@ -297,7 +350,7 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     if batch_match:
         fields["batch_no"] = batch_match.group(1).strip()
         
-    # 1. Regex Extractions
+    # 2. Regex Extractions
     fields["mrp"], fields["mrp_confidence"] = extract_mrp(raw_text)
     fields["net_quantity"], fields["net_quantity_confidence"] = extract_net_quantity(raw_text)
     fields["mfg_date"], fields["mfg_date_confidence"] = extract_mfg_date(raw_text)
@@ -308,7 +361,7 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     fields["expiry_date"], fields["best_before_date"] = extract_dates_breakdown(raw_text)
     fields["fiber_composition"], fields["apparel_size"] = extract_fiber_and_size(raw_text)
     
-    # 2. Contact details extraction
+    # 3. Contact details extraction
     emails = EMAIL_REGEX.findall(raw_text)
     if emails:
         fields["consumer_care_email"] = emails[0]
@@ -317,7 +370,7 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     if phones:
         fields["consumer_care_phone"] = phones[0]
         
-    # 3. NLP Extraction for entities
+    # 4. NLP Extraction for entities
     nlp_results = parse_entities_with_nlp(text_lines)
     fields["manufacturer_name"] = nlp_results.get("manufacturer_name")
     fields["manufacturer_address"] = nlp_results.get("manufacturer_address")

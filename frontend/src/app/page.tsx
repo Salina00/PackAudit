@@ -86,9 +86,10 @@ export default function Dashboard() {
   const [scanStep, setScanStep] = useState(0);
   const [scanError, setScanError] = useState<string | null>(null);
 
-  // Form Inputs
+  // Form Inputs & Multi-image State
   const [inputUrl, setInputUrl] = useState("");
   const [webcamActive, setWebcamActive] = useState(false);
+  const [capturedBlobs, setCapturedBlobs] = useState<{ blob: Blob; url: string }[]>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -182,7 +183,6 @@ export default function Dashboard() {
     e.preventDefault();
     setAuthError(null);
 
-    // Client-side validations
     if (!isEmailValid) {
       setAuthError("Please enter a valid email address (e.g. name@domain.com).");
       return;
@@ -245,15 +245,15 @@ export default function Dashboard() {
 
   // Set scanning steps labels
   const PIPELINE_STEPS = [
-    "Uploading target media...",
+    "Uploading target media (front & back)...",
     "Analyzing EXIF & image headers...",
     "Computing FFT variance & ELA compression error maps...",
     "Evaluating package classifier (YOLOv8)...",
     `Routing to ${selectedCategory.toUpperCase()} regulatory engine...`,
     "Running multilingual OCR (English & Hindi)...",
-    "Extracting domain-specific statutory declarations...",
+    "Aggregating declarations across package sides...",
     "Executing statutory rule checks (25 parameters)...",
-    "Assembling report & compiling PDF..."
+    "Assembling report & compiling 1-page PDF..."
   ];
 
   const executeAudit = async (endpoint: string, formData: FormData) => {
@@ -288,13 +288,15 @@ export default function Dashboard() {
     }
   };
 
+  // Multi-file upload handler
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    const file = files[0];
 
     const formData = new FormData();
-    formData.append("file", file);
+    for (let i = 0; i < files.length; i++) {
+      formData.append("files", files[i]);
+    }
     formData.append("category", selectedCategory);
 
     await executeAudit("/api/scans/upload", formData);
@@ -313,6 +315,7 @@ export default function Dashboard() {
 
   const startWebcam = async () => {
     setWebcamActive(true);
+    setCapturedBlobs([]);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       if (videoRef.current) {
@@ -324,7 +327,7 @@ export default function Dashboard() {
     }
   };
 
-  const capturePhoto = () => {
+  const snapWebcamPhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -336,14 +339,20 @@ export default function Dashboard() {
 
     canvas.toBlob((blob) => {
       if (!blob) return;
-      closeWebcam();
-
-      const formData = new FormData();
-      formData.append("file", blob, "webcam_capture.jpg");
-      formData.append("category", selectedCategory);
-
-      executeAudit("/api/scans/upload", formData);
+      const url = URL.createObjectURL(blob);
+      setCapturedBlobs((prev) => [...prev, { blob, url }]);
     }, "image/jpeg");
+  };
+
+  const submitWebcamAudits = () => {
+    if (capturedBlobs.length === 0) return;
+    const formData = new FormData();
+    capturedBlobs.forEach((item, index) => {
+      formData.append("files", item.blob, `capture_${index + 1}.jpg`);
+    });
+    formData.append("category", selectedCategory);
+    closeWebcam();
+    executeAudit("/api/scans/upload", formData);
   };
 
   const closeWebcam = () => {
@@ -353,6 +362,7 @@ export default function Dashboard() {
       videoRef.current.srcObject = null;
     }
     setWebcamActive(false);
+    setCapturedBlobs([]);
   };
 
   const loadScanDetails = (scanId: string) => {
@@ -367,6 +377,23 @@ export default function Dashboard() {
       .catch((err) => {
         alert("Failed to load scan record: " + err.message);
       });
+  };
+
+  // Helper for rendering date & time in local browser timezone
+  const formatDateTime = (isoString: string) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    } catch {
+      return isoString;
+    }
   };
 
   if (authChecking) {
@@ -384,7 +411,6 @@ export default function Dashboard() {
   if (!currentUser) {
     return (
       <div className="min-h-screen w-full bg-[#070707] text-[#EDEDED] flex flex-col justify-between selection:bg-[#10B981]/30">
-        {/* Top Navbar */}
         <header className="h-16 border-b border-[#1F1F1F] bg-[#0A0A0A] flex items-center justify-between px-8">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded bg-[#10B981]/10 border border-[#10B981]/30 flex items-center justify-center text-[#10B981] font-mono font-bold text-sm">
@@ -406,7 +432,6 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Center Auth Card */}
         <main className="flex-1 flex items-center justify-center p-6">
           <div className="w-full max-w-md bg-[#0F0F0F] border border-[#262626] rounded-xl p-8 shadow-2xl space-y-6">
             <div className="space-y-2 text-center">
@@ -423,7 +448,6 @@ export default function Dashboard() {
               </p>
             </div>
 
-            {/* Mode Switch Tabs */}
             <div className="grid grid-cols-2 p-1 bg-[#141414] border border-[#262626] rounded-lg font-mono text-xs">
               <button
                 type="button"
@@ -449,7 +473,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* Error Banner */}
             {authError && (
               <div className="p-3 bg-[#DC2626]/10 border border-[#DC2626]/30 rounded-lg text-xs font-mono text-[#EF4444] flex items-start gap-2">
                 <span className="shrink-0 font-bold">⚠️</span>
@@ -457,7 +480,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Authentication Form */}
             <form onSubmit={handleAuthSubmit} className="space-y-4 font-mono text-xs">
               {authMode === "signup" && (
                 <div className="space-y-1.5">
@@ -476,7 +498,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Email Input */}
               <div className="space-y-1.5">
                 <label className="text-[#A3A3A3] font-medium flex justify-between">
                   <span>Email Address</span>
@@ -502,7 +523,6 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Password Input */}
               <div className="space-y-1.5">
                 <label className="text-[#A3A3A3] font-medium flex justify-between">
                   <span>Password</span>
@@ -524,7 +544,6 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Password Requirement Checklist (Shown on Signup) */}
               {authMode === "signup" && (
                 <div className="space-y-2 p-3 bg-[#141414] border border-[#262626] rounded-lg text-[11px]">
                   <div className="flex justify-between items-center text-[#737373]">
@@ -536,7 +555,6 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  {/* Strength Bar */}
                   <div className="w-full h-1 bg-[#262626] rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all duration-300 ${
@@ -546,7 +564,6 @@ export default function Dashboard() {
                     ></div>
                   </div>
 
-                  {/* Requirements grid */}
                   <div className="grid grid-cols-2 gap-1 text-[10px] pt-1">
                     <span className={hasMinLength ? "text-[#10B981]" : "text-[#737373]"}>
                       {hasMinLength ? "✓" : "○"} 8+ characters
@@ -567,7 +584,6 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Confirm Password (Shown on Signup) */}
               {authMode === "signup" && (
                 <div className="space-y-1.5">
                   <label className="text-[#A3A3A3] font-medium flex justify-between">
@@ -605,7 +621,6 @@ export default function Dashboard() {
               </button>
             </form>
 
-            {/* Quick Demo Consumer Preset */}
             <div className="pt-2 border-t border-[#1F1F1F] text-center space-y-2">
               <span className="text-[10px] text-[#737373] font-mono block">
                 Quick Demo Preset:
@@ -625,7 +640,6 @@ export default function Dashboard() {
           </div>
         </main>
 
-        {/* Footer */}
         <footer className="h-12 border-t border-[#1F1F1F] bg-[#0A0A0A] flex items-center justify-between px-8 text-xs font-mono text-[#737373]">
           <span>Legal Metrology Act 2009 | FSSAI Regulations 2020</span>
           <span>PackAudit v1.0.0</span>
@@ -655,13 +669,12 @@ export default function Dashboard() {
     verdictColorClass = "border-[#F59E0B] text-[#F59E0B] bg-[#F59E0B]/10";
   }
 
-  // Main Authenticated Workspace with Sidebar
+  const selectedImagePaths = (selectedScan?.image_path || "").split(",").map((s) => s.trim()).filter(Boolean);
+
   return (
     <div className="flex min-h-screen bg-[#0A0A0A] text-[#EDEDED]">
-      {/* Sidebar Navigation */}
       <Sidebar />
 
-      {/* Main Console Layout */}
       <div className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Top Console Bar */}
         <header className="h-14 border-b border-[#262626] bg-[#0A0A0A] flex items-center justify-between px-6 z-10 shrink-0">
@@ -674,7 +687,6 @@ export default function Dashboard() {
             </span>
           </div>
 
-          {/* Consumer Profile & Sign Out */}
           <div className="flex items-center gap-4 text-xs font-mono">
             <div className="flex items-center gap-2">
               <span className="text-[#A3A3A3]">Consumer:</span>
@@ -743,31 +755,60 @@ export default function Dashboard() {
 
             {/* Uploader Section */}
             <div className="space-y-3">
-              <h2 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                Upload / Camera Scan
-              </h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
+                  Upload / Camera Scan
+                </h2>
+                <span className="text-[10px] font-mono text-[#10B981]">
+                  Front + Back supported
+                </span>
+              </div>
 
               {webcamActive ? (
-                <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden flex flex-col items-center">
+                <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg overflow-hidden flex flex-col items-center p-3 space-y-3">
                   <video
                     ref={videoRef}
                     autoPlay
                     playsInline
-                    className="w-full bg-black aspect-video object-cover"
+                    className="w-full bg-black aspect-video object-cover rounded"
                   ></video>
-                  <div className="p-3 flex gap-2 w-full justify-between border-t border-[#262626]">
+
+                  {/* Multi-snapshot preview tray */}
+                  {capturedBlobs.length > 0 && (
+                    <div className="w-full flex gap-2 overflow-x-auto pb-1">
+                      {capturedBlobs.map((item, idx) => (
+                        <div key={idx} className="relative shrink-0 w-16 h-12 rounded border border-[#10B981] overflow-hidden">
+                          <img src={item.url} alt={`Side ${idx + 1}`} className="w-full h-full object-cover" />
+                          <span className="absolute bottom-0 right-0 bg-[#0A0A0A]/90 text-[8px] px-1 font-mono text-[#10B981]">
+                            #{idx + 1}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 w-full justify-between pt-1">
                     <button
                       onClick={closeWebcam}
                       className="px-3 py-1.5 rounded text-xs bg-[#262626] text-[#EDEDED] font-mono hover:bg-[#333333]"
                     >
                       Cancel
                     </button>
-                    <button
-                      onClick={capturePhoto}
-                      className="px-3 py-1.5 rounded text-xs bg-[#10B981] text-[#0A0A0A] font-mono font-bold hover:bg-[#059669]"
-                    >
-                      Capture Photo
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={snapWebcamPhoto}
+                        className="px-3 py-1.5 rounded text-xs bg-[#262626] text-[#EDEDED] font-mono hover:bg-[#333333] border border-[#333333]"
+                      >
+                        📷 Snap Side ({capturedBlobs.length})
+                      </button>
+                      <button
+                        disabled={capturedBlobs.length === 0}
+                        onClick={submitWebcamAudits}
+                        className="px-3 py-1.5 rounded text-xs bg-[#10B981] text-[#0A0A0A] font-mono font-bold hover:bg-[#059669] disabled:opacity-50 shadow"
+                      >
+                        Run Audit
+                      </button>
+                    </div>
                   </div>
                   <canvas ref={canvasRef} className="hidden"></canvas>
                 </div>
@@ -775,7 +816,7 @@ export default function Dashboard() {
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded text-center cursor-pointer"
+                    className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded-lg text-center cursor-pointer"
                   >
                     <svg
                       className="w-6 h-6 text-[#737373] mb-2"
@@ -790,11 +831,13 @@ export default function Dashboard() {
                         d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
                       />
                     </svg>
-                    <span className="text-xs font-mono font-medium">Upload Label Photo</span>
+                    <span className="text-xs font-mono font-medium">Upload Photos</span>
+                    <span className="text-[10px] text-[#737373] font-mono">Select Front + Back</span>
                     <input
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
+                      multiple
                       className="hidden"
                       onChange={handleFileUpload}
                     />
@@ -802,7 +845,7 @@ export default function Dashboard() {
 
                   <button
                     onClick={startWebcam}
-                    className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded text-center cursor-pointer"
+                    className="flex flex-col items-center justify-center p-4 border border-dashed border-[#262626] bg-[#0F0F0F] hover:border-[#10B981] hover:bg-[#151515] transition rounded-lg text-center cursor-pointer"
                   >
                     <svg
                       className="w-6 h-6 text-[#737373] mb-2"
@@ -823,6 +866,7 @@ export default function Dashboard() {
                       />
                     </svg>
                     <span className="text-xs font-mono font-medium">Live Camera</span>
+                    <span className="text-[10px] text-[#737373] font-mono">Multi-side capture</span>
                   </button>
                 </div>
               )}
@@ -851,7 +895,7 @@ export default function Dashboard() {
               </form>
             </div>
 
-            {/* Compliance History Log with Rich Cards & Deletion Controls */}
+            {/* Compliance History Log */}
             <div className="flex-1 flex flex-col min-h-0 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
@@ -886,6 +930,7 @@ export default function Dashboard() {
                     const status = scan.compliance_status || "COMPLIANT";
                     const isFail = status === "NON-COMPLIANT";
                     const isWarn = status === "WARNING";
+                    const firstThumb = (scan.image_path || "").split(",")[0]?.trim();
 
                     return (
                       <div
@@ -897,11 +942,10 @@ export default function Dashboard() {
                             : "bg-[#0F0F0F] border-[#262626] hover:bg-[#141414] hover:border-[#333333]"
                         }`}
                       >
-                        {/* Thumbnail if available */}
-                        {scan.image_path ? (
+                        {firstThumb ? (
                           <div className="w-10 h-10 rounded bg-black shrink-0 overflow-hidden border border-[#262626]">
                             <img
-                              src={`${API_BASE}${scan.image_path}`}
+                              src={`${API_BASE}${firstThumb}`}
                               alt="Thumbnail"
                               className="w-full h-full object-cover"
                             />
@@ -912,19 +956,17 @@ export default function Dashboard() {
                           </div>
                         )}
 
-                        {/* Product Info */}
                         <div className="flex-1 min-w-0 space-y-0.5">
                           <div className="font-mono text-xs font-bold text-[#EDEDED] truncate">
                             {scan.product_name || "Packaged Product"}
                           </div>
                           <div className="text-[10px] font-mono text-[#737373] flex items-center gap-1.5 truncate">
-                            <span>{new Date(scan.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>{formatDateTime(scan.created_at)}</span>
                             <span>•</span>
                             <span className="uppercase">{scan.input_type}</span>
                           </div>
                         </div>
 
-                        {/* Status Badge & Delete Icon */}
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <span
                             className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
@@ -1007,7 +1049,7 @@ export default function Dashboard() {
             ) : selectedScan ? (
               // 4-Section Product Compliance Report
               <div className="p-8 space-y-6 font-mono text-xs">
-                {/* Main Header Box with Export Button */}
+                {/* Main Header Box with Export Buttons */}
                 <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg p-6 space-y-4 shadow-xl">
                   <div className="flex items-center justify-between border-b border-[#262626] pb-4">
                     <div>
@@ -1030,7 +1072,7 @@ export default function Dashboard() {
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
-                        View PDF
+                        View 1-Page PDF
                       </a>
 
                       <a
@@ -1045,38 +1087,47 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Header Meta: Report ID, Date & Time, Product Image */}
+                  {/* Header Meta: Report ID, Date & Time, Product Images */}
                   <div className="grid grid-cols-12 gap-4 items-center">
-                    <div className="col-span-8 space-y-2">
+                    <div className="col-span-7 space-y-2">
                       <div className="flex">
-                        <span className="w-32 text-[#737373]">Report ID:</span>
+                        <span className="w-28 text-[#737373]">Report ID:</span>
                         <span className="text-[#EDEDED] font-bold">{selectedScan.id}</span>
                       </div>
                       <div className="flex">
-                        <span className="w-32 text-[#737373]">Date &amp; Time:</span>
-                        <span className="text-[#EDEDED]">{new Date(selectedScan.created_at).toLocaleString()}</span>
+                        <span className="w-28 text-[#737373]">Date &amp; Time:</span>
+                        <span className="text-[#EDEDED]">{formatDateTime(selectedScan.created_at)}</span>
                       </div>
                       <div className="flex">
-                        <span className="w-32 text-[#737373]">Channel / Mode:</span>
-                        <span className="text-[#EDEDED] capitalize">{selectedScan.input_type.toUpperCase()} ({selectedScan.object_classification})</span>
+                        <span className="w-28 text-[#737373]">Input Media:</span>
+                        <span className="text-[#EDEDED] capitalize">{selectedScan.input_type.replace("_", " ").toUpperCase()} ({selectedScan.object_classification})</span>
                       </div>
                       <div className="flex">
-                        <span className="w-32 text-[#737373]">Audited For:</span>
+                        <span className="w-28 text-[#737373]">Audited For:</span>
                         <span className="text-[#10B981] font-bold">{currentUser.full_name}</span>
                       </div>
                     </div>
 
-                    {/* Embedded Product Image */}
-                    <div className="col-span-4 border border-[#262626] bg-[#070707] rounded-lg p-2 flex flex-col items-center justify-center">
-                      {selectedScan.image_path ? (
+                    {/* Embedded Multi-Side Product Images */}
+                    <div className="col-span-5 border border-[#262626] bg-[#070707] rounded-lg p-2.5 flex flex-col items-center justify-center">
+                      {selectedImagePaths.length > 0 ? (
                         <div className="w-full">
-                          <img
-                            src={`${API_BASE}${selectedScan.image_path}`}
-                            alt="Audited Product"
-                            className="w-full h-24 object-contain rounded bg-black"
-                          />
+                          <div className={`grid gap-2 ${selectedImagePaths.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+                            {selectedImagePaths.map((p, idx) => (
+                              <div key={idx} className="relative">
+                                <img
+                                  src={`${API_BASE}${p}`}
+                                  alt={`Side ${idx + 1}`}
+                                  className="w-full h-24 object-contain rounded bg-black border border-[#262626]"
+                                />
+                                <span className="absolute bottom-1 right-1 bg-[#0A0A0A]/80 text-[8px] px-1 font-mono text-[#A3A3A3] rounded">
+                                  Side {idx + 1}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                           <span className="text-[10px] text-[#737373] text-center block mt-1">
-                            Product Image Capture
+                            {selectedImagePaths.length} Product Image Angle(s) Recorded
                           </span>
                         </div>
                       ) : (
@@ -1296,8 +1347,8 @@ export default function Dashboard() {
                         </span>
                         <span className="text-[11px] text-[#A3A3A3]">
                           {selectedScan.authenticity_score >= 70.0
-                            ? "(Authentic / Original Capture)"
-                            : "(Tampering / Synthesis Warning)"}
+                            ? "(Authentic Capture)"
+                            : "(Tampering Warning)"}
                         </span>
                       </div>
                     </div>
@@ -1305,7 +1356,6 @@ export default function Dashboard() {
                 </div>
               </div>
             ) : (
-              // Empty State
               <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-[#737373] space-y-4">
                 <svg
                   className="w-8 h-8 text-[#262626]"
@@ -1325,7 +1375,7 @@ export default function Dashboard() {
                     No Product Audit Selected
                   </h3>
                   <p className="text-xs max-w-sm mx-auto font-mono">
-                    Select a category on the left, then upload a product label photo, snap with live camera, or paste an e-commerce listing URL to audit.
+                    Select a category on the left, then upload product label photo(s) (Front &amp; Back), snap with live camera, or paste an e-commerce listing URL to audit.
                   </p>
                 </div>
               </div>

@@ -54,117 +54,83 @@ def _format_checks(checks: List[RuleCheck]) -> List[Dict[str, Any]]:
 
 @router.post("/upload", response_model=ScanDetailResponse)
 async def upload_and_scan_image(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    files: Optional[List[UploadFile]] = File(None),
     category: Optional[str] = Form("food"),
     db: Session = Depends(get_db)
 ):
     """
-    Accepts physical package photo upload with category selection (food | apparel | general),
-    executes full pipeline, and returns a structured compliance audit report.
+    Accepts single or multiple physical package photo uploads (e.g. Front & Back sides),
+    executes full pipeline across all angles, merges statutory extractions, and returns a structured compliance audit report.
     """
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file must be a valid image.")
+    all_uploads: List[UploadFile] = []
+    if files:
+        all_uploads.extend([f for f in files if f and f.filename])
+    if file and file.filename:
+        all_uploads.append(file)
+        
+    if not all_uploads:
+        raise HTTPException(status_code=400, detail="Please select at least one valid product image.")
         
     try:
-        contents = await file.read()
-        image_path = save_uploaded_file(contents, file.filename or "upload.jpg")
+        saved_image_paths = []
+        auth_scores = []
+        auth_reports = []
+        all_ocr_regions = []
+        all_raw_text_parts = []
+        calibration_factors = []
+        classifications = []
         
-        auth_score, auth_report = authenticate_image(image_path)
+        for u_file in all_uploads:
+            contents = await u_file.read()
+            img_path = save_uploaded_file(contents, u_file.filename or "upload.jpg")
+            saved_image_paths.append(img_path)
+            
+            # 1. Authenticity check
+            score, report = authenticate_image(img_path)
+            auth_scores.append(score)
+            auth_reports.append(report)
+            
+            # 2. YOLO check
+            route_status, yolo_result = classify_and_route_object(img_path)
+            classifications.append(yolo_result["detected_class"])
+            calibration_factors.append(yolo_result["calibration_factor_px_to_mm"])
+            
+            # 3. OCR extraction
+            ocr_reg, r_txt = perform_ocr(img_path)
+            all_ocr_regions.extend(ocr_reg)
+            all_raw_text_parts.append(r_txt)
+            
+        combined_raw_text = "\n".join(all_raw_text_parts)
+        extracted_fields = extract_fields_from_ocr(all_ocr_regions, combined_raw_text)
         
-        route_status, yolo_result = classify_and_route_object(image_path)
-        classification = yolo_result["detected_class"]
-        calibration_factor = yolo_result["calibration_factor_px_to_mm"]
+        avg_auth_score = float(round(sum(auth_scores) / max(1, len(auth_scores)), 1))
+        merged_auth_report = auth_reports[0] if auth_reports else {}
+        merged_auth_report["authenticity_score"] = avg_auth_score
+        merged_auth_report["is_authentic"] = avg_auth_score >= settings.AUTHENTICITY_THRESHOLD
         
-        if route_status == "invalid":
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid scan target: detected '{classification}'. Please scan a retail packaged commodity."
-            )
-            
-        elif route_status == "pharma":
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            raise HTTPException(
-                status_code=422, 
-                detail="Pharma products are governed under Drug & Cosmetics Rules 1945. Out of scope for this Legal Metrology rulebook."
-            )
-            
-        elif route_status == "exempt":
-            scan_id = str(uuid.uuid4())
-            extracted_fields = {
-                "generic_name": f"Exempted Food / Unpackaged Product ({classification})",
-                "net_quantity": "N/A"
-            }
-            check_results = [{
-                "rule_id": "check_1",
-                "rule_citation": "Rule 18 Exemption Pre-Check",
-                "description": "Checks if product is exempt under Rule 18.",
-                "severity": "CRITICAL",
-                "fix_suggestion": STATIC_FIX_SUGGESTIONS.get("check_1", ""),
-                "status": "exempt",
-                "explanation": f"Short-circuited under Rule 18. Product class '{classification}' is exempt from retail packaging declarations."
-            }]
-            for r_idx in range(2, 13):
-                r_id = f"check_{r_idx}"
-                check_results.append({
-                    "rule_id": r_id,
-                    "rule_citation": f"Check {r_idx}",
-                    "description": "Exempted check.",
-                    "severity": "MAJOR",
-                    "fix_suggestion": STATIC_FIX_SUGGESTIONS.get(r_id, ""),
-                    "status": "exempt",
-                    "explanation": "Short-circuited under Rule 18 exemption."
-                })
-                
-            scan = save_scan_results_to_db(
-                db=db,
-                scan_id=scan_id,
-                input_type="photo",
-                image_path="/static/uploads/" + os.path.basename(image_path),
-                authenticity_score=auth_score,
-                object_classification=classification,
-                extracted_fields=extracted_fields,
-                check_results=check_results
-            )
-            
-            pdf_path = generate_pdf_report(scan, check_results)
-            report_url = f"/api/scans/{scan.id}/report"
-            
-            return {
-                "id": scan.id,
-                "created_at": scan.created_at,
-                "input_type": scan.input_type,
-                "image_path": scan.image_path,
-                "authenticity_score": scan.authenticity_score,
-                "object_classification": scan.object_classification,
-                "fields": [{"field_name": k, "field_value": str(v), "ocr_confidence": 1.0} for k, v in extracted_fields.items()],
-                "checks": check_results,
-                "authenticity_report": auth_report,
-                "report_pdf_url": report_url
-            }
-            
+        calib_factor = calibration_factors[0] if calibration_factors else 0.1
+        primary_class = classifications[0] if classifications else f"{category}_package"
+        
         scan_id = str(uuid.uuid4())
-        
-        ocr_regions, raw_text = perform_ocr(image_path)
-        extracted_fields = extract_fields_from_ocr(ocr_regions, raw_text)
         
         check_results = run_compliance_checks(
             extracted_fields=extracted_fields,
             input_type="photo",
-            calibration_factor=calibration_factor,
+            calibration_factor=calib_factor,
             db=db,
             target_category=category
         )
         
+        joined_img_paths = ",".join(["/static/uploads/" + os.path.basename(p) for p in saved_image_paths])
+        
         scan = save_scan_results_to_db(
             db=db,
             scan_id=scan_id,
-            input_type="photo",
-            image_path="/static/uploads/" + os.path.basename(image_path),
-            authenticity_score=auth_score,
-            object_classification=f"{category}_package" if category else classification,
+            input_type="photo" if len(saved_image_paths) == 1 else "multi_photo",
+            image_path=joined_img_paths,
+            authenticity_score=avg_auth_score,
+            object_classification=f"{category}_package" if category else primary_class,
             extracted_fields=extracted_fields,
             check_results=check_results
         )
@@ -187,7 +153,7 @@ async def upload_and_scan_image(
                 } for f in (scan.fields or [])
             ],
             "checks": _format_checks(scan.checks),
-            "authenticity_report": auth_report,
+            "authenticity_report": merged_auth_report,
             "report_pdf_url": report_url
         }
     except HTTPException:
