@@ -34,7 +34,7 @@ class RuleCheckResponse(BaseModel):
     class Config:
         from_attributes = True
 
-class ScanResponse(BaseModel):
+class ScanSummaryResponse(BaseModel):
     id: str
     created_at: datetime
     input_type: str
@@ -44,6 +44,9 @@ class ScanResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+# Alias for backward compatibility
+ScanResponse = ScanSummaryResponse
 
 class ScanDetailResponse(BaseModel):
     id: str
