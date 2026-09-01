@@ -32,18 +32,24 @@ def _format_checks(checks: List[RuleCheck]) -> List[Dict[str, Any]]:
     """
     Helper to enrich rule checks with statutory citation, description, severity, and auto-fix suggestions.
     """
-    return [
-        {
+    formatted = []
+    for c in (checks or []):
+        r_def = getattr(c, "definition", None) or getattr(c, "rule", None)
+        citation = r_def.rule_citation if (r_def and getattr(r_def, "rule_citation", None)) else c.rule_id
+        description = r_def.description if (r_def and getattr(r_def, "description", None)) else ""
+        severity = r_def.severity if (r_def and getattr(r_def, "severity", None)) else "MAJOR"
+        fix_sug = (r_def.fix_suggestion if (r_def and getattr(r_def, "fix_suggestion", None)) else None) or STATIC_FIX_SUGGESTIONS.get(c.rule_id, "")
+        
+        formatted.append({
             "rule_id": c.rule_id,
-            "rule_citation": c.rule.rule_citation if c.rule else c.rule_id,
-            "description": c.rule.description if c.rule else "",
-            "severity": c.rule.severity if c.rule else "MAJOR",
-            "fix_suggestion": c.rule.fix_suggestion if (c.rule and c.rule.fix_suggestion) else STATIC_FIX_SUGGESTIONS.get(c.rule_id, ""),
+            "rule_citation": citation,
+            "description": description,
+            "severity": severity,
+            "fix_suggestion": fix_sug,
             "status": c.status,
-            "explanation": c.explanation
-        }
-        for c in (checks or [])
-    ]
+            "explanation": c.explanation or ""
+        })
+    return formatted
 
 @router.post("/upload", response_model=ScanDetailResponse)
 async def upload_and_scan_image(
@@ -359,18 +365,7 @@ def download_pdf_report(scan_id: str, db: Session = Depends(get_db)):
     )
     
     if not os.path.exists(pdf_path):
-        check_results = [
-            {
-                "rule_id": c.rule_id,
-                "rule_citation": c.rule.rule_citation if c.rule else c.rule_id,
-                "description": c.rule.description if c.rule else "",
-                "severity": c.rule.severity if c.rule else "MAJOR",
-                "fix_suggestion": c.rule.fix_suggestion if (c.rule and c.rule.fix_suggestion) else STATIC_FIX_SUGGESTIONS.get(c.rule_id, ""),
-                "status": c.status,
-                "explanation": c.explanation
-            }
-            for c in (scan.checks or [])
-        ]
+        check_results = _format_checks(scan.checks)
         generate_pdf_report(scan, check_results)
         
     return FileResponse(

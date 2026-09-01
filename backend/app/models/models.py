@@ -54,6 +54,7 @@ class RuleCheck(Base):
     
     scan = relationship("Scan", back_populates="checks")
     definition = relationship("RuleDefinition", back_populates="checks")
+    rule = relationship("RuleDefinition", viewonly=True)
 
 class ManufacturerCache(Base):
     __tablename__ = "manufacturer_cache"
