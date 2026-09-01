@@ -83,6 +83,7 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     Generates a formal PDF Audit Report using ReportLab.
     Returns the absolute path to the generated PDF.
     """
+    os.makedirs(settings.REPORT_DIR, exist_ok=True)
     pdf_filename = f"{scan.id}_report.pdf"
     target_path = os.path.join(settings.REPORT_DIR, pdf_filename)
     
@@ -96,34 +97,34 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         'ReportTitle',
         parent=styles['Heading1'],
         fontName='Helvetica-Bold',
-        fontSize=20,
-        leading=24,
+        fontSize=18,
+        leading=22,
         textColor=colors.HexColor('#0F172A'),
-        spaceAfter=15
+        spaceAfter=12
     )
     
     subtitle_style = ParagraphStyle(
         'ReportSub',
         parent=styles['Normal'],
-        fontSize=10,
+        fontSize=9,
         textColor=colors.HexColor('#64748B'),
-        spaceAfter=20
+        spaceAfter=16
     )
     
     section_style = ParagraphStyle(
         'SectionHeading',
         parent=styles['Heading2'],
-        fontSize=13,
-        leading=16,
+        fontSize=12,
+        leading=15,
         textColor=colors.HexColor('#0F172A'),
-        spaceBefore=15,
-        spaceAfter=8
+        spaceBefore=12,
+        spaceAfter=6
     )
     
     cell_style = ParagraphStyle(
         'TableCell',
         parent=styles['Normal'],
-        fontSize=9,
+        fontSize=8.5,
         leading=11
     )
     
@@ -131,7 +132,7 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         'TableCellBold',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=9,
+        fontSize=8.5,
         leading=11
     )
     
@@ -140,32 +141,30 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     # 1. Header Title
     story.append(Paragraph("GOVERNMENT OF INDIA", ParagraphStyle('Gov', parent=styles['Normal'], fontSize=8, fontName='Helvetica-Bold', leading=9, alignment=1, spaceAfter=2)))
     story.append(Paragraph("MINISTRY OF CONSUMER AFFAIRS, FOOD & PUBLIC DISTRIBUTION", ParagraphStyle('Ministry', parent=styles['Normal'], fontSize=9, fontName='Helvetica-Bold', leading=10, alignment=1, spaceAfter=2)))
-    story.append(Paragraph("DEPARTMENT OF LEGAL METROLOGY", ParagraphStyle('Dept', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', leading=11, alignment=1, spaceAfter=15)))
+    story.append(Paragraph("DEPARTMENT OF LEGAL METROLOGY & FOOD SAFETY", ParagraphStyle('Dept', parent=styles['Normal'], fontSize=10, fontName='Helvetica-Bold', leading=11, alignment=1, spaceAfter=12)))
     
-    story.append(Paragraph("Legal Metrology (Packaged Commodities) Audit Report", title_style))
+    story.append(Paragraph("Statutory Packaged Commodities Audit Report", title_style))
     story.append(Paragraph(f"Generated on: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')} | Scan Reference ID: {scan.id}", subtitle_style))
     
     # 2. Overall Status Panel
-    overall_status = "PASS"
     fail_count = sum(1 for c in check_results if c.get("status") == "fail")
-    exempt_count = sum(1 for c in check_results if c.get("status") == "exempt")
     unverifiable_count = sum(1 for c in check_results if c.get("status") == "unverifiable")
     
     if fail_count > 0:
         overall_status = "NON-COMPLIANT (FAIL)"
-        status_color = colors.HexColor('#EF4444')
+        status_color_hex = "#EF4444"
     elif unverifiable_count > 0:
         overall_status = "WARNING (UNVERIFIABLE CHECKS)"
-        status_color = colors.HexColor('#F59E0B')
+        status_color_hex = "#F59E0B"
     else:
         overall_status = "COMPLIANT (PASS)"
-        status_color = colors.HexColor('#10B981')
+        status_color_hex = "#10B981"
         
     summary_data = [
-        [Paragraph("<b>Audit Status:</b>", cell_bold_style), Paragraph(f"<font color='{status_color}'><b>{overall_status}</b></font>", cell_bold_style)],
-        [Paragraph("<b>Input Type:</b>", cell_bold_style), Paragraph(scan.input_type.upper(), cell_style)],
-        [Paragraph("<b>Authenticity Confidence:</b>", cell_bold_style), Paragraph(f"{scan.authenticity_score}%", cell_style)],
-        [Paragraph("<b>Object Classification:</b>", cell_bold_style), Paragraph(scan.object_classification, cell_style)]
+        [Paragraph("<b>Audit Status:</b>", cell_bold_style), Paragraph(f"<font color='{status_color_hex}'><b>{overall_status}</b></font>", cell_bold_style)],
+        [Paragraph("<b>Input Type:</b>", cell_bold_style), Paragraph((scan.input_type or 'photo').upper(), cell_style)],
+        [Paragraph("<b>Authenticity Score:</b>", cell_bold_style), Paragraph(f"{scan.authenticity_score or 0.0}%", cell_style)],
+        [Paragraph("<b>Classification:</b>", cell_bold_style), Paragraph(str(scan.object_classification or 'retail_package'), cell_style)]
     ]
     
     summary_table = Table(summary_data, colWidths=[150, 380])
@@ -173,13 +172,13 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#E2E8F0')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#F1F5F9')),
-        ('TOPPADDING', (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
     ]))
     
     story.append(summary_table)
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))
     
     # 3. Extracted Declarations
     story.append(Paragraph("Extracted Label Declarations", section_style))
@@ -188,7 +187,6 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         [Paragraph("<b>Declaration Field</b>", cell_bold_style), Paragraph("<b>Extracted Value</b>", cell_bold_style), Paragraph(f"<b>{confidence_col_title}</b>", cell_bold_style)]
     ]
     
-    # Gather fields
     for field in (scan.fields or []):
         fields_data.append([
             Paragraph((field.field_name or "").replace("_", " ").title(), cell_bold_style),
@@ -201,17 +199,17 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
     ]))
     story.append(fields_table)
-    story.append(Spacer(1, 15))
+    story.append(Spacer(1, 10))
     
     # 4. Rules Checklist
-    story.append(Paragraph("Statutory Rule Check List", section_style))
+    story.append(Paragraph("Statutory Rule Check List (25 Rules)", section_style))
     rules_data = [
-        [Paragraph("<b>Citation</b>", cell_bold_style), Paragraph("<b>Rule Description</b>", cell_bold_style), Paragraph("<b>Result</b>", cell_bold_style), Paragraph("<b>Audit Explanation</b>", cell_bold_style)]
+        [Paragraph("<b>Citation</b>", cell_bold_style), Paragraph("<b>Rule Description</b>", cell_bold_style), Paragraph("<b>Result</b>", cell_bold_style), Paragraph("<b>Audit Explanation & Guidance</b>", cell_bold_style)]
     ]
     
     for check in check_results:
@@ -228,26 +226,31 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         citation = check.get("rule_citation", check.get("rule_id", "Rule Check"))
         desc = check.get("description", "")
         explanation = check.get("explanation", "")
+        fix_suggestion = check.get("fix_suggestion", "")
+        
+        full_text = explanation
+        if fix_suggestion:
+            full_text += f"<br/><font color='#059669'><b>Fix:</b> {fix_suggestion}</font>"
         
         rules_data.append([
             Paragraph(citation, cell_bold_style),
             Paragraph(desc, cell_style),
             Paragraph(f"<font color='{color_hex}'><b>{st.upper()}</b></font>", cell_bold_style),
-            Paragraph(explanation, cell_style)
+            Paragraph(full_text, cell_style)
         ])
         
-    rules_table = Table(rules_data, colWidths=[100, 150, 70, 210])
+    rules_table = Table(rules_data, colWidths=[95, 140, 65, 230])
     rules_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
         ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ('VALIGN', (0, 0), (-1, -1), 'TOP'),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
     ]))
     story.append(rules_table)
-    story.append(Spacer(1, 40))
+    story.append(Spacer(1, 25))
     
     # 5. Signature Footer
     sig_data = [

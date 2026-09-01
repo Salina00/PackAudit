@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from backend.app.core.config import settings
 from backend.app.core.database import get_db
 from backend.app.models.models import Scan, ExtractedField, RuleCheck, RuleDefinition
 from backend.app.schemas.schemas import ScanDetailResponse, ScanSummaryResponse, RuleDefinitionResponse
@@ -358,15 +359,12 @@ def download_pdf_report(scan_id: str, db: Session = Depends(get_db)):
     if not scan:
         raise HTTPException(status_code=404, detail="Scan record not found.")
         
-    pdf_filename = f"report_{scan.id}.pdf"
-    pdf_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-        "static", "reports", pdf_filename
-    )
+    pdf_filename = f"{scan.id}_report.pdf"
+    pdf_path = os.path.join(settings.REPORT_DIR, pdf_filename)
     
     if not os.path.exists(pdf_path):
         check_results = _format_checks(scan.checks)
-        generate_pdf_report(scan, check_results)
+        pdf_path = generate_pdf_report(scan, check_results)
         
     return FileResponse(
         path=pdf_path, 
