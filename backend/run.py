@@ -1,6 +1,8 @@
-import uvicorn
-import sys
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+import sys
+import uvicorn
 
 if __name__ == "__main__":
     # Ensure project root is in python path

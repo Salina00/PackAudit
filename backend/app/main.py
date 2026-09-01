@@ -1,4 +1,6 @@
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,7 +17,7 @@ app = FastAPI(
 # CORS Policy configuration (allowing local frontend origins)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # configure strictly for production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

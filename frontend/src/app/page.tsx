@@ -133,31 +133,45 @@ export default function Dashboard() {
     "Uploading target media...",
     "Analyzing EXIF & image headers...",
     "Computing FFT variance & ELA compression error maps...",
-    "Evaluating AI Deepfake classifier...",
-    "Detecting packaged retail objects (YOLOv8)...",
+    "Evaluating package classifier (YOLOv8)...",
     `Routing to ${selectedCategory.toUpperCase()} regulatory engine...`,
     "Running multilingual OCR (English & Hindi)...",
     "Extracting domain-specific statutory declarations...",
-    "Executing statutory rule checks...",
+    "Executing statutory rule checks (25 parameters)...",
     "Assembling report & compiling PDF..."
   ];
 
-  const triggerScanProgress = (finishCallback: () => void) => {
+  const executeAudit = async (endpoint: string, formData: FormData) => {
     setScanning(true);
     setScanStep(0);
     setScanError(null);
 
+    // Animate progress smoothly while request processes
     const interval = setInterval(() => {
-      setScanStep((prev) => {
-        if (prev < PIPELINE_STEPS.length - 1) {
-          return prev + 1;
-        } else {
-          clearInterval(interval);
-          finishCallback();
-          return prev;
-        }
+      setScanStep((prev) => (prev < PIPELINE_STEPS.length - 2 ? prev + 1 : prev));
+    }, 450);
+
+    try {
+      const res = await fetch(`${API_BASE}${endpoint}`, {
+        method: "POST",
+        body: formData,
       });
-    }, 380);
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Audit request failed with HTTP ${res.status}`);
+      }
+
+      setScanStep(PIPELINE_STEPS.length - 1);
+      const data: ScanDetail = await res.json();
+      setSelectedScan(data);
+      loadHistory();
+    } catch (err: any) {
+      setScanError(err.message || "Failed to process audit. Please try again with a clearer photo or link.");
+    } finally {
+      clearInterval(interval);
+      setScanning(false);
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,27 +183,7 @@ export default function Dashboard() {
     formData.append("file", file);
     formData.append("category", selectedCategory);
 
-    triggerScanProgress(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/scans/upload`, {
-          method: "POST",
-          body: formData
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `Upload scan failed with HTTP ${res.status}`);
-        }
-
-        const data: ScanDetail = await res.json();
-        setSelectedScan(data);
-        loadHistory();
-      } catch (err: any) {
-        setScanError(err.message || "Failed to process image scan.");
-      } finally {
-        setScanning(false);
-      }
-    });
+    await executeAudit("/api/scans/upload", formData);
   };
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
@@ -200,27 +194,7 @@ export default function Dashboard() {
     formData.append("url", inputUrl);
     formData.append("category", selectedCategory);
 
-    triggerScanProgress(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/scans/url`, {
-          method: "POST",
-          body: formData
-        });
-
-        if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || `Listing scan failed with HTTP ${res.status}`);
-        }
-
-        const data: ScanDetail = await res.json();
-        setSelectedScan(data);
-        loadHistory();
-      } catch (err: any) {
-        setScanError(err.message || "Failed to process URL scan.");
-      } finally {
-        setScanning(false);
-      }
-    });
+    await executeAudit("/api/scans/url", formData);
   };
 
   const startWebcam = async () => {
@@ -254,27 +228,7 @@ export default function Dashboard() {
       formData.append("file", blob, "webcam_capture.jpg");
       formData.append("category", selectedCategory);
 
-      triggerScanProgress(async () => {
-        try {
-          const res = await fetch(`${API_BASE}/api/scans/upload`, {
-            method: "POST",
-            body: formData
-          });
-
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.detail || `Capture scan failed with HTTP ${res.status}`);
-          }
-
-          const data: ScanDetail = await res.json();
-          setSelectedScan(data);
-          loadHistory();
-        } catch (err: any) {
-          setScanError(err.message || "Failed to process photo capture.");
-        } finally {
-          setScanning(false);
-        }
-      });
+      executeAudit("/api/scans/upload", formData);
     }, "image/jpeg");
   };
 
@@ -289,7 +243,10 @@ export default function Dashboard() {
 
   const loadScanDetails = (scanId: string) => {
     fetch(`${API_BASE}/api/scans/${scanId}`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to load scan");
+        return res.json();
+      })
       .then((data) => {
         setSelectedScan(data);
       })
@@ -299,6 +256,7 @@ export default function Dashboard() {
   };
 
   const getStatusColor = (checks: Check[]) => {
+    if (!Array.isArray(checks)) return { text: "UNKNOWN", class: "border-[#737373]/20 bg-[#737373]/5 text-[#A3A3A3]" };
     const fails = checks.filter((c) => c.status === "fail");
     const unverifiable = checks.filter((c) => c.status === "unverifiable");
     if (fails.length > 0) {
@@ -562,14 +520,14 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full border-2 border-[#262626] border-t-[#10B981] animate-spin"></div>
               <div className="space-y-2 max-w-md">
                 <h3 className="font-mono text-sm font-bold text-[#EDEDED]">
-                  Executing Full Statutory Audit
+                  Executing Statutory Compliance Audit
                 </h3>
                 <p className="text-xs text-[#10B981] font-mono">
                   {PIPELINE_STEPS[scanStep]}
                 </p>
                 <div className="w-48 h-1 bg-[#1A1A1A] rounded overflow-hidden mx-auto mt-2">
                   <div
-                    className="h-full bg-[#10B981] transition-all duration-500"
+                    className="h-full bg-[#10B981] transition-all duration-300"
                     style={{ width: `${((scanStep + 1) / PIPELINE_STEPS.length) * 100}%` }}
                   ></div>
                 </div>
@@ -597,6 +555,12 @@ export default function Dashboard() {
                 <p className="text-xs text-[#D4D4D4] leading-relaxed font-mono">
                   {scanError}
                 </p>
+                <button
+                  onClick={() => setScanError(null)}
+                  className="px-3 py-1.5 rounded text-xs bg-[#262626] text-[#EDEDED] font-mono hover:bg-[#333333] transition"
+                >
+                  Dismiss & Try Again
+                </button>
               </div>
             </div>
           ) : selectedScan ? (
@@ -680,7 +644,7 @@ export default function Dashboard() {
                     Target Object Class
                   </span>
                   <span className="text-lg font-bold font-mono tracking-tight truncate capitalize">
-                    {selectedScan.object_classification.replace("_", " ")}
+                    {selectedScan.object_classification ? selectedScan.object_classification.replace("_", " ") : "Retail Package"}
                   </span>
                 </div>
               </div>
@@ -875,7 +839,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#262626] text-[#EDEDED]">
-                      {selectedScan.fields.map((field) => (
+                      {(selectedScan.fields || []).map((field) => (
                         <tr
                           key={field.field_name}
                           className="hover:bg-[#151515] transition"
@@ -893,7 +857,7 @@ export default function Dashboard() {
                             )}
                           </td>
                           <td className="p-3 text-[#737373]">
-                            {(field.ocr_confidence * 100).toFixed(1)}%
+                            {((field.ocr_confidence || 1.0) * 100).toFixed(1)}%
                           </td>
                         </tr>
                       ))}
@@ -934,7 +898,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#262626]">
-                      {selectedScan.checks.map((check) => {
+                      {(selectedScan.checks || []).map((check) => {
                         let badgeClass = "bg-[#262626] text-[#737373]";
                         if (check.status === "pass")
                           badgeClass = "bg-[#10B981]/10 text-[#10B981]";
