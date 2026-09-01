@@ -404,9 +404,10 @@ def get_scan_by_id(scan_id: str, db: Session = Depends(get_db)):
     }
 
 @router.get("/{scan_id}/report")
-def download_pdf_report(scan_id: str, db: Session = Depends(get_db)):
+def download_pdf_report(scan_id: str, download: bool = False, db: Session = Depends(get_db)):
     """
     Serves generated PDF inspection report.
+    By default serves inline for direct in-browser rendering.
     """
     scan = db.query(Scan).filter(Scan.id == scan_id).first()
     if not scan:
@@ -415,14 +416,18 @@ def download_pdf_report(scan_id: str, db: Session = Depends(get_db)):
     pdf_filename = f"{scan.id}_report.pdf"
     pdf_path = os.path.join(settings.REPORT_DIR, pdf_filename)
     
-    if not os.path.exists(pdf_path):
-        check_results = _format_checks(scan.checks)
-        pdf_path = generate_pdf_report(scan, check_results)
+    # Always ensure fresh 1-page report is built
+    check_results = _format_checks(scan.checks)
+    pdf_path = generate_pdf_report(scan, check_results)
         
+    disp_type = "attachment" if download else "inline"
+    
     return FileResponse(
         path=pdf_path, 
         filename=f"PackAudit_Report_{scan.id[:8]}.pdf",
-        media_type="application/pdf"
+        media_type="application/pdf",
+        content_disposition_type=disp_type,
+        headers={"Content-Type": "application/pdf"}
     )
 
 @router.get("/rules/list", response_model=List[RuleDefinitionResponse])
