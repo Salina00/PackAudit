@@ -323,7 +323,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-4 text-xs font-mono">
           <div className="flex items-center gap-1.5 text-[#737373]">
             <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
-            <span>PostgreSQL (Port 5432)</span>
+            <span>Supabase Cloud DB</span>
           </div>
 
           <div className="h-4 w-px bg-[#262626]"></div>
