@@ -25,10 +25,11 @@ export default function RulesPage() {
         return res.json();
       })
       .then((data) => {
-        setRules(data);
+        setRules(Array.isArray(data) ? data : []);
         setLoading(false);
       })
       .catch((err) => {
+        setRules([]);
         setError(err.message);
         setLoading(false);
       });

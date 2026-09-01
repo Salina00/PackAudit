@@ -26,7 +26,7 @@ from backend.app.stages.stage6_rules import run_compliance_checks, STATIC_FIX_SU
 from backend.app.stages.stage7_report import generate_pdf_report, save_scan_results_to_db
 
 logger = logging.getLogger("packaudit.api")
-router = APIRouter()
+router = APIRouter(prefix="/api/scans", tags=["Scans"])
 
 def _format_checks(checks: List[RuleCheck]) -> List[Dict[str, Any]]:
     """

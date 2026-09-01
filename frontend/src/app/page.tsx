@@ -110,12 +110,16 @@ export default function Dashboard() {
   const loadHistory = () => {
     setLoadingHistory(true);
     fetch(`${API_BASE}/api/scans/history`)
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch history");
+        return res.json();
+      })
       .then((data) => {
-        setHistory(data);
+        setHistory(Array.isArray(data) ? data : []);
         setLoadingHistory(false);
       })
       .catch(() => {
+        setHistory([]);
         setLoadingHistory(false);
       });
   };
@@ -510,19 +514,19 @@ export default function Dashboard() {
                 Compliance History
               </h2>
               <span className="text-[10px] font-mono text-[#737373]">
-                {history.length} Audits
+                {Array.isArray(history) ? history.length : 0} Audits
               </span>
             </div>
 
             {loadingHistory ? (
               <div className="text-xs text-[#737373] p-4 font-mono">Loading history logs...</div>
-            ) : history.length === 0 ? (
+            ) : !Array.isArray(history) || history.length === 0 ? (
               <div className="text-xs text-[#737373] border border-[#262626] rounded p-6 text-center font-mono">
                 No past compliance audits found.
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
-                {history.map((scan) => (
+                {(Array.isArray(history) ? history : []).map((scan) => (
                   <button
                     key={scan.id}
                     onClick={() => loadScanDetails(scan.id)}
