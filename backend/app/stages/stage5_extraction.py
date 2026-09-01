@@ -21,15 +21,15 @@ def get_spacy_nlp():
 
 # Pre-compiled regex patterns for structured fields
 EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b")
-PHONE_REGEX = re.compile(r"\b(?:\+91[\-\s]?)?\(?[0-9]{3,5}\)?[\-\s]?[0-9]{3,4}[\-\s]?[0-9]{3,4}\b|\b1800[\-\s]?[0-9]{3,4}[\-\s]?[0-9]{3,4}\b")
-PINCODE_REGEX = re.compile(r"\b[1-9][0-9]{2}\s?[0-9]{3}\b") # Indian 6-digit pin codes
+PHONE_REGEX = re.compile(r"\b(?:\+91[\-\s]?)?\(?[0-9]{3,5}\)?[\-\s]?[0-9]{3,4}[\-\s]?[0-9]{3,4}\b|\b1800[\-\s]?[0-9]{3,4}[\-\s]?[0-9]{3,4}\b|\b[6-9]\d{9}\b")
+PINCODE_REGEX = re.compile(r"\b[1-9][0-9]{2}\s?[0-9]{3}\b")
 FSSAI_REGEX = re.compile(r"(?i)(?:fssai|lic\.?\s*(?:no\.?|number)?|licence|license)\s*[:\-\s]*([0-9]{14})\b|\b(1[0-9]{13}|2[0-9]{13})\b")
 
 def extract_mrp(text: str) -> Tuple[Optional[str], float]:
     """
     Extracts the MRP string and float value.
     """
-    mrp_match = re.search(r"(?i)(?:m\.?r\.?p\.?|max\.?(?:imum)?\s*retail\s*price)\s*(?:rs\.?|₹)?\s*(\d+(?:\.\d{2})?)", text)
+    mrp_match = re.search(r"(?i)(?:m\.?r\.?p\.?|max\.?(?:imum)?\s*retail\s*price)\s*(?:rs\.?|₹|\?|r\$)?\s*(\d+(?:\.\d{2})?)", text)
     if mrp_match:
         val_str = mrp_match.group(1)
         return f"Rs. {val_str}", 0.95
@@ -43,10 +43,10 @@ def extract_mrp(text: str) -> Tuple[Optional[str], float]:
 
 def extract_net_quantity(text: str) -> Tuple[Optional[str], float]:
     """
-    Extracts net quantity (e.g. 1 kg, 150 g, 200 ml, 1 L).
+    Extracts net quantity (e.g. 1 kg, 150 g, 200 ml, 1 L, 1 N, 1 Pair, 1 Piece).
     """
     qty_match = re.search(
-        r"(?i)(?:net\s*(?:qty|quantity|vol|volume|weight)?|quantity|qty|volume)\s*(?:is)?\s*:?\s*(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|kg\.|kilogram|kilograms|ml|ml\.|milliliter|milliliters|l|l\.|liter|liters|litre|litres|m|meter|meters|pcs|units|u)\b", 
+        r"(?i)(?:net\s*(?:qty|quantity|vol|volume|weight)?|quantity|qty|volume)\s*(?:is)?\s*:?\s*(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|kg\.|kilogram|kilograms|ml|ml\.|milliliter|milliliters|l|l\.|liter|liters|litre|litres|m|meter|meters|pcs|units|u|n|pair|pairs|piece|pieces)\b", 
         text
     )
     if qty_match:
@@ -54,7 +54,7 @@ def extract_net_quantity(text: str) -> Tuple[Optional[str], float]:
         unit = qty_match.group(2)
         return f"{val} {unit}", 0.95
         
-    bare_qty = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:g|grm|gram|grams|kg|ml|l|litre|litres|pcs|units)\b", text, re.IGNORECASE)
+    bare_qty = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:g|grm|gram|grams|kg|ml|l|litre|litres|pcs|units|n|pair|pairs)\b", text, re.IGNORECASE)
     if bare_qty:
         return f"{bare_qty.group(1)} {bare_qty.group(2)}", 0.75
         
@@ -158,6 +158,18 @@ def extract_dates_breakdown(text: str) -> Tuple[Optional[str], Optional[str]]:
     
     return expiry_date, best_before_date
 
+def extract_fiber_and_size(text: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extracts fiber composition string and garment size declaration.
+    """
+    fiber_match = re.search(r"(?i)(?:composition|fabric|material|content)?\s*[:\-\s]*((?:\d{1,3}%\s*[a-zA-Z\s\-]+(?:,\s*)?)+)", text)
+    fiber_str = fiber_match.group(1).strip() if fiber_match else None
+    
+    size_match = re.search(r"(?i)\b(?:size|fit)\s*[:\-\s]*([A-Za-z0-9\+]+(?:\s*\([^\)]+\))?)", text)
+    size_str = size_match.group(1).strip() if size_match else None
+    
+    return fiber_str, size_str
+
 def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
     """
     Runs NER on text lines to separate organizations, locations, and contact info.
@@ -224,7 +236,7 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
 
 def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) -> Dict[str, Any]:
     """
-    Stage 5: High-level extraction pipeline combining Legal Metrology and FSSAI Food Declarations.
+    Stage 5: High-level extraction pipeline combining Legal Metrology, FSSAI Food, and Apparel Declarations.
     """
     text_lines = [r.get("text", "").strip() for r in ocr_regions if r.get("text", "").strip()]
     
@@ -232,7 +244,7 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     generic_name = None
     if text_lines:
         for line in text_lines[:4]:
-            if len(line) > 3 and not any(k in line.lower() for k in ["mrp", "net qty", "fssai", "batch", "pkd", "mfd", "rs.", "₹"]):
+            if len(line) > 3 and not any(k in line.lower() for k in ["mrp", "net qty", "fssai", "batch", "pkd", "mfd", "rs.", "₹", "size"]):
                 generic_name = line
                 break
         if not generic_name:
@@ -274,7 +286,11 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
         "allergen_statement": None,
         "veg_nonveg": "veg",
         "expiry_date": None,
-        "best_before_date": None
+        "best_before_date": None,
+        
+        # Apparel & Textile Declarations
+        "fiber_composition": None,
+        "apparel_size": None
     }
     
     # 1. Parse structured fields via Regex
@@ -289,7 +305,10 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     fields["nutrition_table"] = extract_nutrition_facts(raw_text)
     fields["expiry_date"], fields["best_before_date"] = extract_dates_breakdown(raw_text)
     
-    # Veg / Non-Veg detection from text keywords
+    # Extract Apparel & Textile fields
+    fields["fiber_composition"], fields["apparel_size"] = extract_fiber_and_size(raw_text)
+    
+    # Veg / Non-Veg detection
     raw_lower = raw_text.lower()
     if any(k in raw_lower for k in ["non-veg", "non veg", "chicken", "meat", "egg", "fish", "mutton", "prawn", "pork", "beef"]):
         fields["veg_nonveg"] = "non_veg"
@@ -315,11 +334,11 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
         fields["consumer_care_phone"] = phones[0]
         
     for idx, line in enumerate(text_lines):
-        if any(k in line.lower() for k in ["consumer care", "customer care", "complaints", "helpline", "feedback"]):
+        if any(k in line.lower() for k in ["consumer care", "customer care", "complaints", "helpline", "feedback", "customer support"]):
             care_parts = []
             for i in range(idx, min(idx + 3, len(text_lines))):
                 l = text_lines[i]
-                if not any(k in l.lower() for k in ["mrp", "quantity", "pkd"]):
+                if not any(k in l.lower() for k in ["mrp", "quantity", "pkd", "size", "cotton"]):
                     care_parts.append(l)
             if care_parts:
                 fields["consumer_care_address"] = " ".join(care_parts).strip()

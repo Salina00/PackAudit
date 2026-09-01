@@ -58,7 +58,6 @@ def test_fssai_all_checks():
         print("TEST 2: Nutrition Information Table & Calculations")
         print("=======================================================")
         
-        # 2a. Consistent compliant table
         nut_compliant = {
             "energy": 460.0,
             "protein": 7.5,
@@ -74,13 +73,12 @@ def test_fssai_all_checks():
         print("Compliant Nutrition:", res_nut1["status"], "->", res_nut1["explanation"])
         assert res_nut1["status"] == "pass"
         
-        # 2b. Inconsistent: Sat Fat > Total Fat
         nut_bad_fat = {
             "energy": 450.0,
             "protein": 6.0,
             "carbohydrates": 60.0,
             "total_fat": 10.0,
-            "saturated_fat": 15.0, # 15 > 10!
+            "saturated_fat": 15.0,
             "trans_fat": 0.1,
             "sodium": 100.0
         }
@@ -89,12 +87,11 @@ def test_fssai_all_checks():
         assert res_nut2["status"] == "fail"
         assert "Saturated fat" in res_nut2["explanation"]
         
-        # 2c. Inconsistent: Added Sugars > Total Carbohydrates
         nut_bad_sugars = {
             "energy": 400.0,
             "protein": 5.0,
             "carbohydrates": 40.0,
-            "added_sugars": 55.0, # 55 > 40!
+            "added_sugars": 55.0,
             "total_fat": 12.0,
             "saturated_fat": 5.0,
             "trans_fat": 0.0,
@@ -109,12 +106,10 @@ def test_fssai_all_checks():
         print("TEST 3: Veg / Non-Veg Logo & Geometric Sizing")
         print("=======================================================")
         
-        # 3a. Compliant Veg Logo (Green circle, 8.5mm on 150cm² PDP)
         res_veg1 = validate_veg_nonveg_logo({"type": "veg", "color": "green", "inner_shape": "circle", "square_size_mm": 8.5}, pdp_area_cm2=150.0)
         print("Compliant Veg Logo:", res_veg1["status"], "->", res_veg1["explanation"])
         assert res_veg1["status"] == "pass"
         
-        # 3b. Undersized Logo (4.0mm on 150cm² PDP where min is 8.0mm)
         res_veg2 = validate_veg_nonveg_logo({"type": "veg", "color": "green", "inner_shape": "circle", "square_size_mm": 4.0}, pdp_area_cm2=150.0)
         print("Undersized Logo:", res_veg2["status"], "->", res_veg2["explanation"])
         assert res_veg2["status"] == "fail"
@@ -124,13 +119,11 @@ def test_fssai_all_checks():
         print("TEST 4: Ingredients List Descending Order (QUID)")
         print("=======================================================")
         
-        # 4a. Strictly descending percentages: 65% > 20% > 12% > 2%
         ing_valid = "Refined Wheat Flour (65%), Sugar (20%), Refined Palm Oil (12%), Invert Sugar Syrup (2%), Iodised Salt"
         res_ing1 = validate_ingredients_descending_order(ing_valid)
         print("Descending Ingredients:", res_ing1["status"], "->", res_ing1["explanation"])
         assert res_ing1["status"] == "pass"
         
-        # 4b. Ascending violation: 40% < 45%
         ing_invalid = "Refined Wheat Flour (40%), Sugar (45%), Palm Oil (10%)"
         res_ing2 = validate_ingredients_descending_order(ing_invalid)
         print("Violating Order Ingredients:", res_ing2["status"], "->", res_ing2["explanation"])
@@ -141,14 +134,12 @@ def test_fssai_all_checks():
         print("TEST 5: Mandatory Allergen Declaration")
         print("=======================================================")
         
-        # 5a. Wheat and Milk ingredients with explicit Contains statement
         ing_text = "Wheat Flour, Sugar, Milk Solids, Butter, Emulsifier (Soy Lecithin)"
         allergen_stmt = "Contains: Wheat (Gluten), Milk, Soy."
         res_all1 = validate_allergen_declaration(ing_text, allergen_stmt)
         print("Compliant Allergen:", res_all1["status"], "->", res_all1["explanation"])
         assert res_all1["status"] == "pass"
         
-        # 5b. Wheat and Peanuts ingredients WITHOUT Contains statement
         ing_text_missing = "Wheat Flour, Sugar, Peanut Butter, Cashew Nuts"
         res_all2 = validate_allergen_declaration(ing_text_missing, None)
         print("Missing Allergen Warning:", res_all2["status"], "->", res_all2["explanation"])
@@ -159,19 +150,17 @@ def test_fssai_all_checks():
         print("TEST 6: Expiry Date vs 'Best Before' Mandate")
         print("=======================================================")
         
-        # 6a. Explicit Expiry Date declared
         res_exp1 = validate_expiry_date_declaration(mfg_date="08/2026", expiry_date="02/2027", best_before_date="Best before 6 months")
         print("Compliant Expiry Date:", res_exp1["status"], "->", res_exp1["explanation"])
         assert res_exp1["status"] == "pass"
         
-        # 6b. ONLY 'Best Before' declared (FSSAI 2020 Violation)
         res_exp2 = validate_expiry_date_declaration(mfg_date="08/2026", expiry_date=None, best_before_date="Best before 6 months from manufacture")
         print("Best Before Only Violation:", res_exp2["status"], "->", res_exp2["explanation"])
         assert res_exp2["status"] == "fail"
         assert "Best Before' is optional and cannot substitute" in res_exp2["explanation"]
 
         print("\n=======================================================")
-        print("TEST 7: Full 18-Rule Pipeline Evaluation")
+        print("TEST 7: Full 25-Rule Pipeline Evaluation (Food Product)")
         print("=======================================================")
         
         sample_food_package = {
@@ -187,7 +176,7 @@ def test_fssai_all_checks():
             "consumer_care_name": "Britannia Consumer Cell",
             "consumer_care_address": "Prestige Shantiniketan, Whitefield, Bangalore 560048",
             "is_imported": False,
-            "fssai_license_no": "10012011000167", # Britannia Central License
+            "fssai_license_no": "10012011000167",
             "nutrition_table": {
                 "energy": 490.0,
                 "protein": 7.0,
@@ -207,14 +196,14 @@ def test_fssai_all_checks():
         }
         
         all_results = run_compliance_checks(sample_food_package, "photo", 1.5, db)
-        print(f"Total Evaluated Rules: {len(all_results)} (12 Legal Metrology + 6 FSSAI)")
-        assert len(all_results) == 18
+        print(f"Total Evaluated Rules: {len(all_results)} (12 Legal Metrology + 6 FSSAI + 7 Apparel Exempt)")
+        assert len(all_results) == 25
         
         fails = [c for c in all_results if c["status"] == "fail"]
-        print(f"Total Fails on Compliant Product: {len(fails)}")
+        print(f"Total Fails on Compliant Food Product: {len(fails)}")
         assert len(fails) == 0, f"Expected 0 fails, got: {fails}"
         
-        print("\nALL 6 FSSAI CHECKS + FULL 18-RULE PIPELINE PASSED WITH 100% ACCURACY!")
+        print("\nALL 6 FSSAI CHECKS + FULL 25-RULE PIPELINE PASSED WITH 100% ACCURACY!")
         
     finally:
         db.close()

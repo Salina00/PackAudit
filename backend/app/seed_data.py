@@ -9,9 +9,9 @@ from sqlalchemy.orm import Session
 from backend.app.core.database import SessionLocal, engine, Base
 from backend.app.models.models import RuleDefinition, ManufacturerCache
 
-# 12 Legal Metrology Rules + 6 FSSAI Food Rules Data
+# 12 Legal Metrology Rules + 6 FSSAI Food Rules + 7 Apparel & Textile Rules = 25 Rules
 RULE_DEFINITIONS_DATA = [
-    # ------------------ Legal Metrology Rules (1 - 12) ------------------
+    # ------------------ Legal Metrology General Rules (1 - 12) ------------------
     {
         "rule_id": "check_1",
         "rule_citation": "Rule 18 Exemption Pre-Check",
@@ -52,10 +52,10 @@ RULE_DEFINITIONS_DATA = [
         "description": "The net quantity, in terms of standard unit of weight, measure or number, must be declared.",
         "check_type": "measurement",
         "validation_logic": {
-            "allowed_units": ["g", "grm", "gram", "grams", "kg", "kg.", "kilogram", "kilograms", "ml", "ml.", "milliliter", "milliliters", "l", "l.", "liter", "liters", "litre", "litres", "m", "meter", "meters", "pcs", "units", "u"]
+            "allowed_units": ["g", "grm", "gram", "grams", "kg", "kg.", "kilogram", "kilograms", "ml", "ml.", "milliliter", "milliliters", "l", "l.", "liter", "liters", "litre", "litres", "m", "meter", "meters", "pcs", "units", "u", "n", "pair", "pairs", "piece", "pieces"]
         },
         "severity": "CRITICAL",
-        "fix_suggestion": "Declare net quantity using statutory metric unit symbols ('g', 'kg', 'ml', 'l', 'pcs') without non-standard abbreviations like 'gms' or 'ltrs'."
+        "fix_suggestion": "Declare net quantity using statutory metric unit symbols ('g', 'kg', 'ml', 'l', 'pcs', 'N') without non-standard abbreviations like 'gms' or 'ltrs'."
     },
     {
         "rule_id": "check_5",
@@ -225,6 +225,85 @@ RULE_DEFINITIONS_DATA = [
         },
         "severity": "CRITICAL",
         "fix_suggestion": "Declare an explicit 'Expiry Date' or 'Use By' date on the package (e.g. 'Expiry: 31/12/2026'). 'Best Before' is not a legal substitute."
+    },
+
+    # ------------------ Apparel & Textile Rules (National Standards + LM 2011) ------------------
+    {
+        "rule_id": "apparel_check_1",
+        "rule_citation": "Textile Rule / Fiber 100% Math",
+        "description": "Mandatory declaration of fiber/fabric names with exact percentage values mathematically totaling 100%.",
+        "check_type": "measurement",
+        "validation_logic": {
+            "exact_sum": 100.0
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Declare all component fibers and fabrics with percentage values that sum exactly to 100% (e.g. '60% Cotton, 40% Polyester')."
+    },
+    {
+        "rule_id": "apparel_check_2",
+        "rule_citation": "Rule 6(1)(c) / Size & Metric",
+        "description": "Garment size must declare physical metric dimensions in centimeters (cm) or meters (m); international letter size (S/M/L/XL) alone is legally insufficient.",
+        "check_type": "measurement",
+        "validation_logic": {
+            "metric_pairing_required": True
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Pair international letter sizes (S/M/L/XL) with physical metric measurements in centimeters (e.g. 'Size: L (Chest 102 cm, Length 76 cm)')."
+    },
+    {
+        "rule_id": "apparel_check_3",
+        "rule_citation": "Rule 6(1)(e) / MRP & Tax Suffix",
+        "description": "Maximum Retail Price in INR/Rupees explicitly accompanied by mandatory 'inclusive of all taxes' suffix with OCR typo tolerance.",
+        "check_type": "regex",
+        "validation_logic": {
+            "required_phrases": ["inclusive of all taxes", "incl. of all taxes"]
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Include the mandatory statutory suffix 'inclusive of all taxes' or 'incl. of all taxes' immediately adjacent to the MRP declaration."
+    },
+    {
+        "rule_id": "apparel_check_4",
+        "rule_citation": "Rule 6(1)(b) / Apparel Taxonomy",
+        "description": "Common or generic apparel commodity name must match recognized national Department of Consumer Affairs taxonomy (>=80% similarity).",
+        "check_type": "presence",
+        "validation_logic": {
+            "taxonomy_threshold": 80
+        },
+        "severity": "MAJOR",
+        "fix_suggestion": "Declare the statutory generic apparel commodity name (e.g. 'Men's T-Shirt', 'Formal Trousers', 'Cotton Saree') separate from brand name."
+    },
+    {
+        "rule_id": "apparel_check_5",
+        "rule_citation": "Rule 6(1)(f) / Consumer Care 3-Way",
+        "description": "All 3 mandatory consumer care channels must be present: working telephone helpline, valid email, and physical postal address with 6-digit PIN code.",
+        "check_type": "presence",
+        "validation_logic": {
+            "required_channels": ["phone", "email", "address"]
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Provide all 3 statutory consumer care channels: working telephone number (or 1800 toll-free), valid email ID, and postal address with 6-digit PIN code."
+    },
+    {
+        "rule_id": "apparel_check_6",
+        "rule_citation": "Rule 6(1)(d) / Contextual MFD",
+        "description": "Month and year of manufacture or pre-packing declared in explicit statutory context (MFD / MFG / PKD / Packed).",
+        "check_type": "regex",
+        "validation_logic": {
+            "context_keywords": ["mfd", "mfg", "pkd", "packed", "manufactured"]
+        },
+        "severity": "MAJOR",
+        "fix_suggestion": "Declare the manufacturing or packing date in explicit statutory context (e.g. 'MFD: 08/2026' or 'PKD: Aug 2026')."
+    },
+    {
+        "rule_id": "apparel_check_7",
+        "rule_citation": "Rule 6(1)(f) / Country of Origin",
+        "description": "Explicit Country of Origin declaration ('Country of Origin: ...' or 'Made in ...') separate from general manufacturer address mentions.",
+        "check_type": "presence",
+        "validation_logic": {
+            "explicit_context_required": True
+        },
+        "severity": "CRITICAL",
+        "fix_suggestion": "Include an explicit Country of Origin declaration (e.g. 'Country of Origin: India' or 'Made in India') on the garment label."
     }
 ]
 
@@ -238,45 +317,27 @@ MANUFACTURER_CACHE_DATA = [
     {"company_name": "Marico Limited", "aliases": ["Marico", "Parachute"], "registered_pincodes": ["400098"], "verified_addresses": ["7th Floor, Grande Palladium, 175, CST Road, Kalina, Santacruz East, Mumbai 400098"]},
     {"company_name": "Tata Consumer Products Limited", "aliases": ["Tata Tea", "Tata Salt", "TCPL"], "registered_pincodes": ["700020", "560001"], "verified_addresses": ["1, Bishop Lefroy Road, Kolkata 700020"]},
     {"company_name": "Parle Products Private Limited", "aliases": ["Parle", "Parle-G"], "registered_pincodes": ["400057"], "verified_addresses": ["North Level Crossing, Vile Parle East, Mumbai 400057"]},
-    {"company_name": "Godrej Consumer Products Limited", "aliases": ["GCPL", "Godrej"], "registered_pincodes": ["400079"], "verified_addresses": ["Godrej One, Pirojshanagar, Eastern Express Highway, Vikhroli East, Mumbai 400079"]},
-    {"company_name": "Colgate-Palmolive (India) Limited", "aliases": ["Colgate"], "registered_pincodes": ["400076"], "verified_addresses": ["Colgate Research Centre, Main Street, Hiranandani Gardens, Powai, Mumbai 400076"]},
-    {"company_name": "Amul (GCMMF)", "aliases": ["Amul", "GCMMF"], "registered_pincodes": ["388001"], "verified_addresses": ["Amul Dairy Road, Anand 388001, Gujarat"]},
-    {"company_name": "Mother Dairy Fruit & Vegetable Pvt Ltd", "aliases": ["Mother Dairy"], "registered_pincodes": ["110092"], "verified_addresses": ["Patparganj, Delhi 110092"]},
-    {"company_name": "Haldiram Snacks Private Limited", "aliases": ["Haldiram", "Haldirams"], "registered_pincodes": ["201307", "440008"], "verified_addresses": ["B-1/H-8, Mohan Co-operative Industrial Estate, Main Mathura Road, New Delhi 110044"]},
-    {"company_name": "Bikaji Foods International Limited", "aliases": ["Bikaji"], "registered_pincodes": ["334006"], "verified_addresses": ["F 196-199, F 178 & E 188, Bichhwal Industrial Area, Bikaner 334006"]},
-    {"company_name": "Balaji Wafers Private Limited", "aliases": ["Balaji"], "registered_pincodes": ["360024"], "verified_addresses": ["Vajdi (Vad), Kalawad Road, Tal. Lodhika, Dist. Rajkot 360024"]},
-    {"company_name": "Patanjali Ayurved Limited", "aliases": ["Patanjali"], "registered_pincodes": ["249405"], "verified_addresses": ["Patanjali Food & Herbal Park, Padartha, Laksar Road, Haridwar 249405"]},
-    {"company_name": "Emami Limited", "aliases": ["Emami", "BoroPlus", "Zandu"], "registered_pincodes": ["700107"], "verified_addresses": ["Emami Tower, 687 Anandapur, EM Bypass, Kolkata 700107"]},
-    {"company_name": "Adani Wilmar Limited", "aliases": ["Fortune", "Adani Wilmar"], "registered_pincodes": ["380009"], "verified_addresses": ["Fortune House, Near Navrangpura Railway Crossing, Ahmedabad 380009"]},
-    {"company_name": "PepsiCo India Holdings Private Limited", "aliases": ["PepsiCo", "Lays", "Kurkure", "Tropicana"], "registered_pincodes": ["122002"], "verified_addresses": ["Level 3-6, Pioneer Square, Sector 62, Near Golf Course Extension Road, Gurugram 122102"]},
-    {"company_name": "Coca-Cola India Private Limited", "aliases": ["Coca-Cola", "Coke", "Thums Up"], "registered_pincodes": ["122016"], "verified_addresses": ["One Horizon Center, Golf Course Road, DLF Phase 5, Sector 43, Gurugram 122003"]},
-    {"company_name": "Mondelez India Foods Private Limited", "aliases": ["Cadbury", "Mondelez", "Oreo"], "registered_pincodes": ["400018"], "verified_addresses": ["Unit No. 2001, 20th Floor, Tower-3, One International Center, Parel, Mumbai 400013"]},
-    {"company_name": "Reckitt Benckiser (India) Private Limited", "aliases": ["Dettol", "Reckitt", "Harpic", "Lizol"], "registered_pincodes": ["122016"], "verified_addresses": ["DLF Cyber Park, 6th & 7th Floor, Tower C, 405 B, Udyog Vihar Phase III, Sector 20, Gurugram 122016"]},
-    {"company_name": "Procter & Gamble Hygiene and Health Care Limited", "aliases": ["P&G", "Gillette", "Pampers", "Ariel", "Tide"], "registered_pincodes": ["400099"], "verified_addresses": ["P&G Plaza, Cardinal Gracias Road, Chakala, Andheri East, Mumbai 400099"]},
-    {"company_name": "Johnson & Johnson Private Limited", "aliases": ["J&J", "Johnson & Johnson", "Johnsons"], "registered_pincodes": ["400080"], "verified_addresses": ["501 Arena Space, Behind Majas Bus Depot, Off JVLR, Jogeshwari East, Mumbai 400060"]},
-    {"company_name": "GSK Consumer Healthcare (Haleon India)", "aliases": ["Sensodyne", "Crocin", "Eno", "Haleon"], "registered_pincodes": ["122002"], "verified_addresses": ["5th Floor, DLF Cyber City, Building 10, Tower C, DLF Phase 2, Gurugram 122002"]},
-    {"company_name": "Wipro Consumer Care and Lighting", "aliases": ["Wipro", "Santoor", "Yardley"], "registered_pincodes": ["560035"], "verified_addresses": ["Doddakannelli, Sarjapur Road, Bangalore 560035"]},
-    {"company_name": "CavinKare Private Limited", "aliases": ["CavinKare", "Chik", "Meera", "Nyle"], "registered_pincodes": ["600032"], "verified_addresses": ["Cavin Ville, No. 12, Cenotaph Road, Teynampet, Chennai 600018"]},
-    {"company_name": "Jyothy Labs Limited", "aliases": ["Ujala", "Pril", "Margo", "Exo", "Jyothy"], "registered_pincodes": ["400059"], "verified_addresses": ["Ujala House, Ram Krishna Mandir Road, Kondivita, Andheri East, Mumbai 400059"]},
-    {"company_name": "Himalaya Wellness Company", "aliases": ["Himalaya", "Himalaya Herbals"], "registered_pincodes": ["562123"], "verified_addresses": ["Makali, Bengaluru 562123, Karnataka"]},
-    {"company_name": "Bisleri International Private Limited", "aliases": ["Bisleri"], "registered_pincodes": ["400099"], "verified_addresses": ["Western Express Highway, Andheri East, Mumbai 400099"]}
+    {"company_name": "Raymond Limited", "aliases": ["Raymond", "Park Avenue", "ColorPlus", "Parx"], "registered_pincodes": ["400606", "400001"], "verified_addresses": ["Plot No. 156/H No. 2, Village Zadgaon, Ratnagiri, Maharashtra 415612", "Jekegram, Pokhran Road No. 1, Thane West 400606"]},
+    {"company_name": "Aditya Birla Fashion and Retail Limited", "aliases": ["ABFRL", "Louis Philippe", "Van Heusen", "Allen Solly", "Peter England"], "registered_pincodes": ["560068", "400025"], "verified_addresses": ["Piramal Agastya Corporate Park, Building 'A', 4th and 5th Floor, Unit No. 401, 403, 501, 502, L.B.S. Road, Kurla West, Mumbai 400070"]},
+    {"company_name": "Arvind Limited", "aliases": ["Arvind", "Flying Machine", "US Polo"], "registered_pincodes": ["380025"], "verified_addresses": ["Naroda Road, Ahmedabad, Gujarat 380025"]},
+    {"company_name": "Page Industries Limited (Jockey)", "aliases": ["Jockey", "Page"], "registered_pincodes": ["560008"], "verified_addresses": ["Umiya Business Bay - Tower 1, 7th Floor, Cessna Business Park, Kadubeesanahalli, Bangalore 560103"]},
+    {"company_name": "Amul (GCMMF)", "aliases": ["Amul", "GCMMF"], "registered_pincodes": ["388001"], "verified_addresses": ["Amul Dairy Road, Anand 388001, Gujarat"]}
 ]
 
 def seed_database():
     """
-    Creates tables if not created, and populates initial rule definitions and brand caches.
+    Creates tables if not created, and populates 25 rule definitions and brand caches.
     """
     db: Session = SessionLocal()
     try:
         print("Initializing Database tables...")
         Base.metadata.create_all(bind=engine)
         
-        # Ensure new column fix_suggestion exists in PostgreSQL
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE rule_definitions ADD COLUMN IF NOT EXISTS fix_suggestion VARCHAR;"))
             conn.commit()
         
-        print(f"Seeding {len(RULE_DEFINITIONS_DATA)} Rule Definitions (12 Legal Metrology + 6 FSSAI Food)...")
+        print(f"Seeding {len(RULE_DEFINITIONS_DATA)} Rule Definitions (12 Legal Metrology + 6 FSSAI Food + 7 Apparel & Textile)...")
         for r_data in RULE_DEFINITIONS_DATA:
             existing = db.query(RuleDefinition).filter(RuleDefinition.rule_id == r_data["rule_id"]).first()
             if not existing:
@@ -300,7 +361,7 @@ def seed_database():
                 
         db.commit()
         
-        print("Seeding Manufacturer Cache...")
+        print("Seeding Manufacturer & Brand Cache...")
         for m_data in MANUFACTURER_CACHE_DATA:
             existing_mfg = db.query(ManufacturerCache).filter(ManufacturerCache.company_name == m_data["company_name"]).first()
             if not existing_mfg:
@@ -317,7 +378,7 @@ def seed_database():
                 existing_mfg.verified_addresses = m_data["verified_addresses"]
                 
         db.commit()
-        print("Database seeding completed successfully!")
+        print("Database seeding completed successfully (25 Rules + Brands Cached)!")
     except Exception as e:
         db.rollback()
         print(f"Error during seeding: {e}")

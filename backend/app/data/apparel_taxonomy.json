@@ -1,0 +1,25 @@
+{
+  "category": "APPAREL_AND_TEXTILE",
+  "match_threshold": 80,
+  "taxonomies": [
+    { "term": "T-Shirt", "aliases": ["Tee", "T Shirt", "Round Neck T-Shirt", "Polo T-Shirt", "Graphic Tee", "Crew Neck Tee"] },
+    { "term": "Shirt", "aliases": ["Casual Shirt", "Formal Shirt", "Men's Shirt", "Women's Shirt", "Dress Shirt", "Linen Shirt", "Cotton Shirt"] },
+    { "term": "Trousers", "aliases": ["Pants", "Chinos", "Formal Trousers", "Casual Trousers", "Cargo Pants", "Joggers"] },
+    { "term": "Jeans", "aliases": ["Denim Pants", "Denim Jeans", "Slim Fit Jeans", "Skinny Jeans", "Straight Jeans"] },
+    { "term": "Saree", "aliases": ["Sari", "Silk Saree", "Cotton Saree", "Georgette Saree", "Banarasi Saree"] },
+    { "term": "Kurta", "aliases": ["Kurti", "Ethnic Kurta", "Anarkali Kurti", "Long Kurta", "Short Kurta"] },
+    { "term": "Dress", "aliases": ["One Piece Dress", "Maxi Dress", "Midi Dress", "Casual Dress", "Evening Gown"] },
+    { "term": "Jacket", "aliases": ["Blazer", "Denim Jacket", "Winter Jacket", "Bomber Jacket", "Coat", "Overcoat", "Hoodie", "Sweatshirt"] },
+    { "term": "Sweater", "aliases": ["Cardigan", "Pullover", "Woolen Sweater", "Jumper"] },
+    { "term": "Shorts", "aliases": ["Bermuda Shorts", "Denim Shorts", "Athletic Shorts", "Running Shorts"] },
+    { "term": "Skirt", "aliases": ["Midi Skirt", "Mini Skirt", "A-Line Skirt", "Pleated Skirt"] },
+    { "term": "Innerwear", "aliases": ["Underwear", "Briefs", "Boxers", "Trunks", "Vest", "Bra", "Panties", "Lingerie"] },
+    { "term": "Nightwear", "aliases": ["Pyjama", "Pajamas", "Nighty", "Night Suit", "Loungewear", "Sleepwear"] },
+    { "term": "Socks", "aliases": ["Cotton Socks", "Ankle Socks", "Crew Socks", "Athletic Socks"] },
+    { "term": "Footwear", "aliases": ["Shoes", "Casual Footwear", "Sneakers", "Sandals", "Slippers", "Leather Shoes", "Boots"] },
+    { "term": "Loose Fabric", "aliases": ["Dress Material", "Unstitched Fabric", "Suit Piece", "Shirting", "Suiting", "Textile Fabric"] },
+    { "term": "Bed Linen", "aliases": ["Bedsheet", "Bed Cover", "Pillow Covers", "Duvet Cover", "Blanket", "Quilt"] },
+    { "term": "Towels", "aliases": ["Bath Towel", "Hand Towel", "Face Towel", "Kitchen Towel"] },
+    { "term": "Curtains", "aliases": ["Drapes", "Window Curtains", "Door Curtains", "Sheer Curtains"] }
+  ]
+}

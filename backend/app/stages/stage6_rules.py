@@ -15,6 +15,15 @@ from backend.app.stages.stage8_fssai import (
     validate_allergen_declaration,
     validate_expiry_date_declaration
 )
+from backend.app.stages.stage9_textile import (
+    validate_fiber_composition,
+    validate_apparel_size_metric,
+    validate_apparel_mrp_fuzzy,
+    validate_apparel_generic_name,
+    validate_apparel_consumer_care,
+    validate_apparel_mfg_date,
+    validate_apparel_country_of_origin
+)
 
 # In-memory rule definitions cache loaded at startup/first request
 _rules_cache = {}
@@ -22,10 +31,11 @@ _rules_cache = {}
 PINCODE_REGEX = re.compile(r"\b[1-9][0-9]{2}\s?[0-9]{3}\b")
 
 STATIC_FIX_SUGGESTIONS = {
+    # Legal Metrology Rules (1 - 12)
     "check_1": "Ensure statutory exemption eligibility criteria (net qty ≤ 10g/ml, agricultural produce > 50kg, or industrial/export use) are clearly documented on packaging.",
     "check_2": "Include the full legal name and complete postal address of the manufacturer/packer with a valid 6-digit PIN code.",
     "check_3": "Declare the common or generic name of the packaged commodity prominently on the Principal Display Panel.",
-    "check_4": "Declare net quantity using statutory metric unit symbols ('g', 'kg', 'ml', 'l', 'pcs') without non-standard abbreviations like 'gms' or 'ltrs'.",
+    "check_4": "Declare net quantity using statutory metric unit symbols ('g', 'kg', 'ml', 'l', 'pcs', 'N') without non-standard abbreviations like 'gms' or 'ltrs'.",
     "check_5": "Declare the month and year of manufacturing or pre-packing in standard format (e.g. '08/2026' or 'Aug 2026').",
     "check_6": "Add the mandatory statutory suffix 'inclusive of all taxes' or 'incl. of all taxes' immediately adjacent to the MRP declaration.",
     "check_7": "Declare complete consumer care contact details including contact officer/cell name, postal address, working phone number, and valid email ID.",
@@ -41,7 +51,16 @@ STATIC_FIX_SUGGESTIONS = {
     "fssai_check_3": "Display the compliant Veg (green circle in green square) or Non-Veg (brown triangle in brown square) symbol meeting minimum PDP millimeter dimensions.",
     "fssai_check_4": "List all ingredients in strictly descending order of incoming weight/volume, ensuring declared percentages descend monotonically.",
     "fssai_check_5": "Add a separate allergen advisory statement immediately adjacent to ingredients (e.g. 'Contains: Wheat (Gluten), Milk, Tree Nuts').",
-    "fssai_check_6": "Declare an explicit 'Expiry Date' or 'Use By' date on the package (e.g. 'Expiry: 31/12/2026'). 'Best Before' is not a legal substitute."
+    "fssai_check_6": "Declare an explicit 'Expiry Date' or 'Use By' date on the package (e.g. 'Expiry: 31/12/2026'). 'Best Before' is not a legal substitute.",
+    
+    # Apparel & Textile Fix Suggestions
+    "apparel_check_1": "Declare all component fibers and fabrics with percentage values that sum exactly to 100% (e.g. '60% Cotton, 40% Polyester').",
+    "apparel_check_2": "Pair international letter sizes (S/M/L/XL) with physical metric measurements in centimeters (e.g. 'Size: L (Chest 102 cm, Length 76 cm)').",
+    "apparel_check_3": "Include the mandatory statutory suffix 'inclusive of all taxes' or 'incl. of all taxes' immediately adjacent to the MRP declaration.",
+    "apparel_check_4": "Declare the statutory generic apparel commodity name (e.g. 'Men's T-Shirt', 'Formal Trousers', 'Cotton Saree') separate from brand name.",
+    "apparel_check_5": "Provide all 3 statutory consumer care channels: working telephone number (or 1800 toll-free), valid email ID, and postal address with 6-digit PIN code.",
+    "apparel_check_6": "Declare the manufacturing or packing date in explicit statutory context (e.g. 'MFD: 08/2026' or 'PKD: Aug 2026').",
+    "apparel_check_7": "Include an explicit Country of Origin declaration (e.g. 'Country of Origin: India' or 'Made in India') on the garment label."
 }
 
 def get_rules_definitions(db: Session) -> Dict[str, Dict[str, Any]]:
@@ -85,7 +104,7 @@ def parse_net_qty_numeric(qty_str: Optional[str]) -> Tuple[Optional[float], Opti
         return val * 1000.0, "ml"
     elif unit in ["m", "meter", "meters"]:
         return val, "m"
-    elif unit in ["pcs", "units", "u"]:
+    elif unit in ["pcs", "units", "u", "n", "pair", "pairs", "piece", "pieces"]:
         return val, "pcs"
         
     return val, unit
@@ -163,7 +182,10 @@ def _get_rule_meta(rules: Dict[str, Dict[str, Any]], rule_id: str, default_citat
 
 def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, calibration_factor: Optional[float], db: Session) -> List[Dict[str, Any]]:
     """
-    Stage 6: Compliance rule engine running 12 Legal Metrology checks + 6 FSSAI Food checks.
+    Stage 6: Compliance rule engine running 25 statutory rules:
+    - 12 Legal Metrology General Rules
+    - 6 FSSAI Food & Beverage Rules
+    - 7 Apparel & Textile Rules
     """
     rules = get_rules_definitions(db)
     check_results = []
@@ -282,7 +304,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             "explanation": "Fail: Net quantity declaration is missing."
         })
     else:
-        match_abbr = re.search(r"\b(g|kg|ml|l|m|pcs|units|u)\b", str(net_qty).lower())
+        match_abbr = re.search(r"\b(g|kg|ml|l|m|pcs|units|u|n|pair|pairs|piece|pieces)\b", str(net_qty).lower())
         is_standard_unit = match_abbr is not None
         non_compliant = re.search(r"\b(gms|grm|grms|kgs|mltr|ltr|ltrs|liters|litres|milliliters)\b", str(net_qty).lower())
         
@@ -294,7 +316,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
                 "severity": sev4,
                 "fix_suggestion": fix4,
                 "status": "fail",
-                "explanation": f"Fail: Net quantity '{net_qty}' uses non-compliant abbreviation '{non_compliant.group(1)}'. Must use standard units like 'g', 'kg', 'ml', 'l'."
+                "explanation": f"Fail: Net quantity '{net_qty}' uses non-compliant abbreviation '{non_compliant.group(1)}'. Must use standard units like 'g', 'kg', 'ml', 'l', 'N', 'pcs'."
             })
         elif not is_standard_unit:
             check_results.append({
@@ -304,7 +326,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
                 "severity": sev4,
                 "fix_suggestion": fix4,
                 "status": "fail",
-                "explanation": f"Fail: Net quantity '{net_qty}' lacks standard units of measurement (g, kg, ml, l, pcs)."
+                "explanation": f"Fail: Net quantity '{net_qty}' lacks standard units of measurement (g, kg, ml, l, pcs, N)."
             })
         else:
             check_results.append({
@@ -314,7 +336,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
                 "severity": sev4,
                 "fix_suggestion": fix4,
                 "status": "pass",
-                "explanation": f"Pass: Net quantity '{net_qty}' uses correct metric abbreviation."
+                "explanation": f"Pass: Net quantity '{net_qty}' uses correct metric/count abbreviation."
             })
             
     # 5. Check 5: Month & Year of Manufacturing/Packing
@@ -367,7 +389,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
             "explanation": "Fail: Maximum Retail Price (MRP) declaration is missing."
         })
     else:
-        phrases = rules.get("check_6", {}).get("validation_logic", {}).get("required_phrases", ["inclusive of all taxes", "incl. of all taxes", "incl.of all taxes", "incl of all taxes"])
+        phrases = rules.get("check_6", {}).get("validation_logic", {}).get("required_phrases", ["inclusive of all taxes", "incl. of all taxes", "incl of all taxes", "incl.of all taxes"])
         has_taxes_phrase = any(p in raw_text_lower for p in phrases) or input_type == "url"
         
         if not has_taxes_phrase:
@@ -635,7 +657,7 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
         })
 
     # =========================================================================
-    # 13 - 18: FSSAI FOOD & BEVERAGE COMPLIANCE CHECKS (FSSAI 2020)
+    # DOMAIN ROUTING: FOOD & BEVERAGE vs APPAREL & TEXTILE vs GENERAL
     # =========================================================================
     fssai_no = extracted_fields.get("fssai_license_no")
     nutrition_tbl = extracted_fields.get("nutrition_table") or {}
@@ -644,98 +666,123 @@ def run_compliance_checks(extracted_fields: Dict[str, Any], input_type: str, cal
     veg_type = extracted_fields.get("veg_nonveg", "veg")
     exp_date = extracted_fields.get("expiry_date")
     bb_date = extracted_fields.get("best_before_date")
+    fiber_comp = extracted_fields.get("fiber_composition")
+    app_size = extracted_fields.get("apparel_size")
     
-    # Food domain routing
     g_name_lower = str(extracted_fields.get("generic_name") or "").lower()
+    
+    # Keyword detection for Apparel
+    apparel_keywords = [
+        "shirt", "t-shirt", "tee", "pant", "pants", "trouser", "trousers", "jeans", "denim",
+        "saree", "sari", "kurta", "kurti", "dress", "jacket", "blazer", "sweater", "hoodie",
+        "sweatshirt", "socks", "shorts", "skirt", "underwear", "briefs", "boxers", "vest",
+        "fabric", "textile", "cotton", "polyester", "silk", "linen", "garment", "apparel",
+        "linen", "towel", "bedsheet", "curtain", "suit", "cloth", "footwear", "shoes"
+    ]
+    is_apparel = any(k in g_name_lower for k in apparel_keywords) or bool(fiber_comp) or bool(app_size) or "cotton" in raw_text_lower or "polyester" in raw_text_lower
+    
+    # Keyword detection for Food
+    food_keywords = [
+        "tea", "coffee", "biscuit", "cookie", "oil", "ghee", "butter", "milk", "curd", "paneer", 
+        "flour", "atta", "maida", "rice", "wheat", "dal", "pulse", "sugar", "salt", "spice", 
+        "masala", "juice", "drink", "beverage", "water", "snack", "namkeen", "chips", "chocolate", 
+        "sweet", "candy", "sauce", "ketchup", "jam", "honey", "noodle", "pasta", "cereal", "oats",
+        "bread", "cake", "food", "edible"
+    ]
+    is_food = (any(k in g_name_lower for k in food_keywords) or bool(fssai_no) or bool(nutrition_tbl) or bool(ing_text)) and not is_apparel
+    
+    # Non-food / Non-apparel general commodity
     non_food_keywords = [
         "soap", "bath soap", "detergent", "shampoo", "conditioner", "cream", "lotion", "perfume", 
         "deodorant", "toothpaste", "toothbrush", "cleaner", "battery", "bulb", "wire", "cable", 
         "appliance", "paint", "cement", "lubricant", "cosmetic", "toy", "paper", "stationery"
     ]
-    is_non_food = any(k in g_name_lower for k in non_food_keywords) and not (fssai_no or nutrition_tbl or ing_text)
-    
-    # 13. FSSAI Check 1: FSSAI License 3-Tier Verification
+    is_non_food_general = any(k in g_name_lower for k in non_food_keywords) and not (fssai_no or nutrition_tbl or ing_text) and not is_apparel
+
+    # =========================================================================
+    # 13 - 18: FSSAI FOOD & BEVERAGE COMPLIANCE CHECKS (FSSAI 2020)
+    # =========================================================================
     fcit1, fdesc1, fsev1, ffix1 = _get_rule_meta(rules, "fssai_check_1", "FSSAI Sec 31 / License 3-Tier", "14-digit FSSAI License/Registration decoded via 3-Tier syntax, FoSCoS portal, and verified cache.", "CRITICAL")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_1", "rule_citation": fcit1, "description": fdesc1, "severity": fsev1, "fix_suggestion": ffix1,
-            "status": "exempt", "explanation": f"Exempt: Commodity '{g_name}' is a non-food product not subject to FSSAI licensing."
-        })
-    else:
-        fssai_1_res = check_fssai_3tier(fssai_no, mfg_name)
-        check_results.append({
-            "rule_id": "fssai_check_1", "rule_citation": fcit1, "description": fdesc1, "severity": fsev1, "fix_suggestion": ffix1,
-            "status": fssai_1_res["status"], "explanation": fssai_1_res["explanation"]
-        })
-    
-    # 14. FSSAI Check 2: Nutrition Information Table & Calculations
     fcit2, fdesc2, fsev2, ffix2 = _get_rule_meta(rules, "fssai_check_2", "FSSAI 2020 Reg 5(3) / Nutrition", "Nutritional Information per 100g/100ml and per serving declaring 8 mandatory nutrients.", "CRITICAL")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_2", "rule_citation": fcit2, "description": fdesc2, "severity": fsev2, "fix_suggestion": ffix2,
-            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI nutritional labelling."
-        })
-    else:
-        fssai_2_res = validate_nutrition_table(nutrition_tbl, raw_text)
-        check_results.append({
-            "rule_id": "fssai_check_2", "rule_citation": fcit2, "description": fdesc2, "severity": fsev2, "fix_suggestion": ffix2,
-            "status": fssai_2_res["status"], "explanation": fssai_2_res["explanation"]
-        })
-    
-    # 15. FSSAI Check 3: Veg / Non-Veg Logo & Sizing
     fcit3, fdesc3, fsev3, ffix3 = _get_rule_meta(rules, "fssai_check_3", "FSSAI 2020 Reg 5(4) / Veg Logo", "Mandatory Vegetarian or Non-Vegetarian logo conforming to PDP surface area millimeter dimensions.", "MAJOR")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_3", "rule_citation": fcit3, "description": fdesc3, "severity": fsev3, "fix_suggestion": ffix3,
-            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' does not require FSSAI Veg/Non-Veg logo."
-        })
-    else:
-        fssai_3_res = validate_veg_nonveg_logo({"type": veg_type}, pdp_area_cm2=150.0)
-        check_results.append({
-            "rule_id": "fssai_check_3", "rule_citation": fcit3, "description": fdesc3, "severity": fsev3, "fix_suggestion": ffix3,
-            "status": fssai_3_res["status"], "explanation": fssai_3_res["explanation"]
-        })
-    
-    # 16. FSSAI Check 4: List of Ingredients (Descending Order)
     fcit4, fdesc4, fsev4, ffix4 = _get_rule_meta(rules, "fssai_check_4", "FSSAI 2020 Reg 5(1) / Ingredients", "List of Ingredients in strictly descending order of weight or volume at manufacture with QUID compliance.", "MAJOR")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_4", "rule_citation": fcit4, "description": fdesc4, "severity": fsev4, "fix_suggestion": ffix4,
-            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI ingredient sequencing regulations."
-        })
-    else:
-        fssai_4_res = validate_ingredients_descending_order(ing_text, raw_text)
-        check_results.append({
-            "rule_id": "fssai_check_4", "rule_citation": fcit4, "description": fdesc4, "severity": fsev4, "fix_suggestion": ffix4,
-            "status": fssai_4_res["status"], "explanation": fssai_4_res["explanation"]
-        })
-    
-    # 17. FSSAI Check 5: Mandatory Allergen Declaration
     fcit5, fdesc5, fsev5, ffix5 = _get_rule_meta(rules, "fssai_check_5", "FSSAI 2020 Reg 5(2) / Allergens", "Mandatory separate allergen declaration ('Contains: ...') for 8 statutory allergen classes.", "CRITICAL")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_5", "rule_citation": fcit5, "description": fdesc5, "severity": fsev5, "fix_suggestion": ffix5,
-            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI allergen regulations."
-        })
-    else:
-        fssai_5_res = validate_allergen_declaration(ing_text, allergen_stmt, raw_text)
-        check_results.append({
-            "rule_id": "fssai_check_5", "rule_citation": fcit5, "description": fdesc5, "severity": fsev5, "fix_suggestion": ffix5,
-            "status": fssai_5_res["status"], "explanation": fssai_5_res["explanation"]
-        })
-    
-    # 18. FSSAI Check 6: Expiry Date vs "Best Before" Mandate
     fcit6, fdesc6, fsev6, ffix6 = _get_rule_meta(rules, "fssai_check_6", "FSSAI 2020 Reg 5(10) / Expiry Date", "Mandatory Expiry Date or Use By date declaration; Best Before date cannot be used as a legal substitute.", "CRITICAL")
-    if is_non_food:
-        check_results.append({
-            "rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6,
-            "status": "exempt", "explanation": f"Exempt: Non-food commodity '{g_name}' is not subject to FSSAI date of minimum durability / expiry mandates."
-        })
-    else:
+
+    if is_food:
+        fssai_1_res = check_fssai_3tier(fssai_no, mfg_name)
+        fssai_2_res = validate_nutrition_table(nutrition_tbl, raw_text)
+        fssai_3_res = validate_veg_nonveg_logo({"type": veg_type}, pdp_area_cm2=150.0)
+        fssai_4_res = validate_ingredients_descending_order(ing_text, raw_text)
+        fssai_5_res = validate_allergen_declaration(ing_text, allergen_stmt, raw_text)
         fssai_6_res = validate_expiry_date_declaration(mfg_d, exp_date, bb_date, raw_text)
-        check_results.append({
-            "rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6,
-            "status": fssai_6_res["status"], "explanation": fssai_6_res["explanation"]
-        })
+
+        check_results.extend([
+            {"rule_id": "fssai_check_1", "rule_citation": fcit1, "description": fdesc1, "severity": fsev1, "fix_suggestion": ffix1, "status": fssai_1_res["status"], "explanation": fssai_1_res["explanation"]},
+            {"rule_id": "fssai_check_2", "rule_citation": fcit2, "description": fdesc2, "severity": fsev2, "fix_suggestion": ffix2, "status": fssai_2_res["status"], "explanation": fssai_2_res["explanation"]},
+            {"rule_id": "fssai_check_3", "rule_citation": fcit3, "description": fdesc3, "severity": fsev3, "fix_suggestion": ffix3, "status": fssai_3_res["status"], "explanation": fssai_3_res["explanation"]},
+            {"rule_id": "fssai_check_4", "rule_citation": fcit4, "description": fdesc4, "severity": fsev4, "fix_suggestion": ffix4, "status": fssai_4_res["status"], "explanation": fssai_4_res["explanation"]},
+            {"rule_id": "fssai_check_5", "rule_citation": fcit5, "description": fdesc5, "severity": fsev5, "fix_suggestion": ffix5, "status": fssai_5_res["status"], "explanation": fssai_5_res["explanation"]},
+            {"rule_id": "fssai_check_6", "rule_citation": fcit6, "description": fdesc6, "severity": fsev6, "fix_suggestion": ffix6, "status": fssai_6_res["status"], "explanation": fssai_6_res["explanation"]}
+        ])
+    else:
+        reason = f"Commodity '{g_name}' is not a food/beverage product."
+        for r_id, cit, desc, sev, fix in [
+            ("fssai_check_1", fcit1, fdesc1, fsev1, ffix1),
+            ("fssai_check_2", fcit2, fdesc2, fsev2, ffix2),
+            ("fssai_check_3", fcit3, fdesc3, fsev3, ffix3),
+            ("fssai_check_4", fcit4, fdesc4, fsev4, ffix4),
+            ("fssai_check_5", fcit5, fdesc5, fsev5, ffix5),
+            ("fssai_check_6", fcit6, fdesc6, fsev6, ffix6),
+        ]:
+            check_results.append({
+                "rule_id": r_id, "rule_citation": cit, "description": desc, "severity": sev, "fix_suggestion": fix,
+                "status": "exempt", "explanation": f"Exempt: {reason}"
+            })
+
+    # =========================================================================
+    # 19 - 25: APPAREL & TEXTILE COMPLIANCE CHECKS (7 CHECKS)
+    # =========================================================================
+    acit1, adesc1, asev1, afix1 = _get_rule_meta(rules, "apparel_check_1", "Textile Rule / Fiber 100% Math", "Mandatory declaration of fiber/fabric names with percentage values totaling 100%.", "CRITICAL")
+    acit2, adesc2, asev2, afix2 = _get_rule_meta(rules, "apparel_check_2", "Rule 6(1)(c) / Size & Metric", "Garment size must declare physical metric dimensions in cm/m paired with S/M/L/XL.", "CRITICAL")
+    acit3, adesc3, asev3, afix3 = _get_rule_meta(rules, "apparel_check_3", "Rule 6(1)(e) / MRP & Tax Suffix", "Maximum Retail Price in INR/Rupees accompanied by mandatory tax inclusion suffix with fuzzy OCR tolerance.", "CRITICAL")
+    acit4, adesc4, asev4, afix4 = _get_rule_meta(rules, "apparel_check_4", "Rule 6(1)(b) / Apparel Taxonomy", "Common or generic apparel commodity name matching recognized national taxonomy dictionary.", "MAJOR")
+    acit5, adesc5, asev5, afix5 = _get_rule_meta(rules, "apparel_check_5", "Rule 6(1)(f) / Consumer Care 3-Way", "All 3 mandatory consumer care channels: phone helpline, email, and postal address with PIN code.", "CRITICAL")
+    acit6, adesc6, asev6, afix6 = _get_rule_meta(rules, "apparel_check_6", "Rule 6(1)(d) / Contextual MFD", "Month and year of manufacture or pre-packing declared in explicit statutory context.", "MAJOR")
+    acit7, adesc7, asev7, afix7 = _get_rule_meta(rules, "apparel_check_7", "Rule 6(1)(f) / Country of Origin", "Explicit Country of Origin declaration separate from incidental manufacturer address mentions.", "CRITICAL")
+
+    if is_apparel:
+        app_1_res = validate_fiber_composition(raw_text)
+        app_2_res = validate_apparel_size_metric(raw_text)
+        app_3_res = validate_apparel_mrp_fuzzy(raw_text)
+        app_4_res = validate_apparel_generic_name(raw_text, g_name)
+        app_5_res = validate_apparel_consumer_care(extracted_fields, raw_text)
+        app_6_res = validate_apparel_mfg_date(raw_text)
+        app_7_res = validate_apparel_country_of_origin(raw_text)
+
+        check_results.extend([
+            {"rule_id": "apparel_check_1", "rule_citation": acit1, "description": adesc1, "severity": asev1, "fix_suggestion": afix1, "status": app_1_res["status"], "explanation": app_1_res["explanation"]},
+            {"rule_id": "apparel_check_2", "rule_citation": acit2, "description": adesc2, "severity": asev2, "fix_suggestion": afix2, "status": app_2_res["status"], "explanation": app_2_res["explanation"]},
+            {"rule_id": "apparel_check_3", "rule_citation": acit3, "description": adesc3, "severity": asev3, "fix_suggestion": afix3, "status": app_3_res["status"], "explanation": app_3_res["explanation"]},
+            {"rule_id": "apparel_check_4", "rule_citation": acit4, "description": adesc4, "severity": asev4, "fix_suggestion": afix4, "status": app_4_res["status"], "explanation": app_4_res["explanation"]},
+            {"rule_id": "apparel_check_5", "rule_citation": acit5, "description": adesc5, "severity": asev5, "fix_suggestion": afix5, "status": app_5_res["status"], "explanation": app_5_res["explanation"]},
+            {"rule_id": "apparel_check_6", "rule_citation": acit6, "description": adesc6, "severity": asev6, "fix_suggestion": afix6, "status": app_6_res["status"], "explanation": app_6_res["explanation"]},
+            {"rule_id": "apparel_check_7", "rule_citation": acit7, "description": adesc7, "severity": asev7, "fix_suggestion": afix7, "status": app_7_res["status"], "explanation": app_7_res["explanation"]}
+        ])
+    else:
+        reason = f"Commodity '{g_name}' is not an apparel or textile product."
+        for r_id, cit, desc, sev, fix in [
+            ("apparel_check_1", acit1, adesc1, asev1, afix1),
+            ("apparel_check_2", acit2, adesc2, asev2, afix2),
+            ("apparel_check_3", acit3, adesc3, asev3, afix3),
+            ("apparel_check_4", acit4, adesc4, asev4, afix4),
+            ("apparel_check_5", acit5, adesc5, asev5, afix5),
+            ("apparel_check_6", acit6, adesc6, asev6, afix6),
+            ("apparel_check_7", acit7, adesc7, asev7, afix7),
+        ]:
+            check_results.append({
+                "rule_id": r_id, "rule_citation": cit, "description": desc, "severity": sev, "fix_suggestion": fix,
+                "status": "exempt", "explanation": f"Exempt: {reason}"
+            })
         
     return check_results

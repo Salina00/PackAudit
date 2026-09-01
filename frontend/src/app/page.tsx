@@ -129,10 +129,10 @@ export default function Dashboard() {
     "Evaluating AI Deepfake classifier...",
     "Detecting packaged retail objects (YOLOv8)...",
     "Running multilingual OCR (English & Hindi)...",
-    "Extracting Legal Metrology & FSSAI Food metadata...",
+    "Extracting Legal Metrology, FSSAI Food, & Textile metadata...",
+    "Executing Fiber 100% Math Validator & Metric Size Engine...",
     "Verifying 3-Tier FSSAI FoSCoS License Registry...",
-    "Validating Nutrition Table & Allergen Rules...",
-    "Executing statutory rule engine (18 checks)...",
+    "Executing statutory rule engine (25 checks)...",
     "Assembling report & compiling PDF..."
   ];
 
@@ -310,7 +310,7 @@ export default function Dashboard() {
             PACKAUDIT CONSOLE
           </span>
           <span className="text-xs px-2 py-0.5 rounded bg-[#10B981]/10 text-[#10B981] font-mono">
-            LM + FSSAI ENGINE
+            LM + FSSAI + TEXTILE
           </span>
         </div>
 
@@ -338,7 +338,7 @@ export default function Dashboard() {
 
       {/* Main Workspace Layout */}
       <div className="flex-1 grid grid-cols-12 overflow-hidden h-[calc(screen-14)]">
-        {/* Left Side: Operations (Uploader, Listing input, History) */}
+        {/* Left Side: Operations */}
         <section className="col-span-4 border-r border-[#262626] bg-[#0A0A0A] p-6 space-y-6 overflow-y-auto flex flex-col h-full">
           {/* Uploader Section */}
           <div className="space-y-3">
@@ -505,7 +505,7 @@ export default function Dashboard() {
               <div className="w-10 h-10 rounded-full border-2 border-[#262626] border-t-[#10B981] animate-spin"></div>
               <div className="space-y-2 max-w-md">
                 <h3 className="font-mono text-sm font-bold text-[#EDEDED]">
-                  Executing Full Statutory Audit (LM Rules + FSSAI 2020)
+                  Executing Full Statutory Audit (25 Rules)
                 </h3>
                 <p className="text-xs text-[#10B981] font-mono">
                   {PIPELINE_STEPS[scanStep]}
@@ -641,10 +641,10 @@ export default function Dashboard() {
                       </div>
                       <div className="space-y-1">
                         <div className="text-xs font-mono font-bold text-[#10B981]">
-                          Fully Compliant with Legal Metrology & FSSAI Food Regulations
+                          Fully Compliant with Statutory Regulations
                         </div>
                         <p className="text-[11px] font-mono text-[#A3A3A3]">
-                          All 18 statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, FSSAI 3-Tier License, Nutrition, Veg/Non-Veg, Ingredients, Allergens, Expiry Date) verified successfully.
+                          All statutory packaging declarations (MRP, Net Quantity, Origin, Mfg/Packer details, Consumer Care, Fiber/Size, Food Safety) verified successfully across 25 legal parameters.
                         </p>
                       </div>
                     </div>
@@ -845,11 +845,11 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {/* Statutory Checklist Table (18 Checks: LM + FSSAI) */}
+              {/* Statutory Checklist Table (25 Checks: LM + FSSAI + Textile) */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                    Statutory Rule Checklist & Guidance (18 Rules)
+                    Statutory Rule Checklist & Guidance (25 Rules)
                   </h3>
                   <div className="flex gap-2 text-[10px] font-mono text-[#737373]">
                     <span className="flex items-center gap-1">
@@ -858,7 +858,11 @@ export default function Dashboard() {
                     </span>
                     <span className="flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]"></span>
-                      FSSAI Food 2020 (13-18)
+                      FSSAI Food (13-18)
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#EC4899]"></span>
+                      Apparel & Textile (19-25)
                     </span>
                   </div>
                 </div>
@@ -883,6 +887,7 @@ export default function Dashboard() {
                           badgeClass = "bg-[#F59E0B]/10 text-[#F59E0B]";
 
                         const isFssai = check.rule_id.startsWith("fssai_");
+                        const isApparel = check.rule_id.startsWith("apparel_");
 
                         return (
                           <tr
@@ -895,10 +900,12 @@ export default function Dashboard() {
                                 className={`text-[9px] px-1.5 py-0.5 rounded font-mono block w-fit ${
                                   isFssai
                                     ? "bg-[#10B981]/10 text-[#10B981]"
+                                    : isApparel
+                                    ? "bg-[#EC4899]/10 text-[#F472B6]"
                                     : "bg-[#3B82F6]/10 text-[#60A5FA]"
                                 }`}
                               >
-                                {isFssai ? "FSSAI 2020" : "LM 2011"}
+                                {isFssai ? "FSSAI 2020" : isApparel ? "TEXTILE 2011" : "LM 2011"}
                               </span>
                             </td>
                             <td className="p-3 align-top">
