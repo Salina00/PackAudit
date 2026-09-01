@@ -382,7 +382,12 @@ export default function Dashboard() {
   // Helper for rendering date & time in local browser timezone
   const formatDateTime = (isoString: string) => {
     try {
-      const d = new Date(isoString);
+      if (!isoString) return "";
+      let raw = isoString;
+      if (!raw.endsWith("Z") && !raw.includes("+") && !raw.includes("-", 10)) {
+        raw = `${raw}Z`;
+      }
+      const d = new Date(raw);
       return d.toLocaleString("en-IN", {
         day: "2-digit",
         month: "short",
@@ -1101,10 +1106,6 @@ export default function Dashboard() {
                       <div className="flex">
                         <span className="w-28 text-[#737373]">Input Media:</span>
                         <span className="text-[#EDEDED] capitalize">{selectedScan.input_type.replace("_", " ").toUpperCase()} ({selectedScan.object_classification})</span>
-                      </div>
-                      <div className="flex">
-                        <span className="w-28 text-[#737373]">Audited For:</span>
-                        <span className="text-[#10B981] font-bold">{currentUser.full_name}</span>
                       </div>
                     </div>
 
