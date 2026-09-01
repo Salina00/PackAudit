@@ -43,10 +43,10 @@ def extract_mrp(text: str) -> Tuple[Optional[str], float]:
 
 def extract_net_quantity(text: str) -> Tuple[Optional[str], float]:
     """
-    Extracts net quantity (e.g. 1 kg, 150 g, 200 ml, 1 L, 1 N, 1 Pair, 1 Piece).
+    Extracts net quantity (e.g. 1 kg, 150 g, 69 g, 200 ml, 1 L, 1 N, 1 Pair, 1 Piece).
     """
     qty_match = re.search(
-        r"(?i)(?:net\s*(?:qty|quantity|vol|volume|weight)?|quantity|qty|volume)\s*(?:is)?\s*:?\s*(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|kg\.|kilogram|kilograms|ml|ml\.|milliliter|milliliters|l|l\.|liter|liters|litre|litres|m|meter|meters|pcs|units|u|n|pair|pairs|piece|pieces)\b", 
+        r"(?i)(?:net\s*(?:qty|quantity|vol|volume|weight)?|quantity|qty|volume|net\s*wt\.?)\s*(?:is)?\s*:?\s*(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|kg\.|kilogram|kilograms|ml|ml\.|milliliter|milliliters|l|l\.|liter|liters|litre|litres|m|meter|meters|pcs|units|u|n|pair|pairs|piece|pieces)\b", 
         text
     )
     if qty_match:
@@ -54,18 +54,22 @@ def extract_net_quantity(text: str) -> Tuple[Optional[str], float]:
         unit = qty_match.group(2)
         return f"{val} {unit}", 0.95
         
-    bare_qty = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:g|grm|gram|grams|kg|ml|l|litre|litres|pcs|units|n|pair|pairs)\b", text, re.IGNORECASE)
+    bare_qty = re.search(r"\b(\d+(?:\.\d+)?)\s*(g|grm|gram|grams|kg|ml|l|litre|litres|pcs|units|n|pair|pairs)\b", text, re.IGNORECASE)
     if bare_qty:
-        return f"{bare_qty.group(1)} {bare_qty.group(2)}", 0.75
+        groups = bare_qty.groups()
+        if len(groups) >= 2:
+            return f"{groups[0]} {groups[1]}", 0.75
+        elif len(groups) == 1:
+            return f"{groups[0]}", 0.65
         
     return None, 0.0
 
 def extract_mfg_date(text: str) -> Tuple[Optional[str], float]:
     """
-    Extracts manufacturing/packing/import date (MM/YYYY or Month YYYY).
+    Extracts manufacturing/packing/import date (DD/MM/YYYY, MM/YYYY, or Month YYYY).
     """
     date_match = re.search(
-        r"(?i)(?:pkg|pkd|mfd|mfg|packed|manufactured|mfg\s*date|import\s*date)\s*:?\s*([A-Za-z]{3}\s+\d{4}|\d{2}[/\-\.]\d{4}|\d{2}[/\-\.]\d{2})\b",
+        r"(?i)(?:pkg|pkd|mfd|mfg|packed|manufactured|mfg\s*date|import\s*date)\s*:?\s*([A-Za-z]{3}\s+\d{4}|\d{1,2}[/\-\.]\d{2}[/\-\.]\d{2,4}|\d{2}[/\-\.]\d{4}|\d{2}[/\-\.]\d{2})\b",
         text
     )
     if date_match:
@@ -130,7 +134,7 @@ def extract_nutrition_facts(text: str) -> Dict[str, Any]:
         if m:
             try:
                 return float(m.group(1))
-            except ValueError:
+            except (ValueError, IndexError):
                 return None
         return None
 
@@ -150,7 +154,7 @@ def extract_dates_breakdown(text: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Extracts explicit Expiry Date vs Best Before date strings.
     """
-    expiry_match = re.search(r"(?i)(?:expiry|exp\.?|use\s*by|use\s*before)\s*[:\-\s]*([0-9]{1,2}[/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s+[0-9]{2,4})", text)
+    expiry_match = re.search(r"(?i)(?:expiry|exp\.?|use\s*by|use\s*before)\s*[:\-\s]*([0-9]{1,2}[/\-\.][0-9]{1,2}[/\-\.][0-9]{2,4}|[0-9]{1,2}[/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s+[0-9]{2,4})", text)
     expiry_date = expiry_match.group(1).strip() if expiry_match else None
     
     best_before_match = re.search(r"(?i)best\s*before\s*[:\-\s]*([0-9]{1,2}\s*(?:months?|days?|years?)|[0-9]{1,2}[/\-\.][0-9]{2,4}|[A-Za-z]{3,9}\s+[0-9]{2,4})", text)
@@ -187,6 +191,16 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
     
     joined_text = "\n".join(text_lines)
     
+    # Check for keywords first
+    for line in text_lines:
+        line_l = line.lower()
+        if any(k in line_l for k in ["marketed by", "mfd by", "manufactured by", "mfd. by", "packed by", "itc limited"]):
+            parts = line.split(":") if ":" in line else line.split("by")
+            cand = parts[-1].strip()
+            if len(cand) > 2:
+                extracted["manufacturer_name"] = cand
+                break
+                
     if nlp == "FAILED" or nlp is None:
         mfd_by_lines = []
         imp_by_lines = []
@@ -194,14 +208,14 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
         
         for line in text_lines:
             line_l = line.lower()
-            if "mfd by" in line_l or "manufactured by" in line_l or "mfd. by" in line_l or "packed by" in line_l:
+            if "mfd by" in line_l or "manufactured by" in line_l or "mfd. by" in line_l or "packed by" in line_l or "marketed by" in line_l:
                 mfd_by_lines.append(line)
             elif "imported by" in line_l or "importer" in line_l or "distributed by" in line_l:
                 imp_by_lines.append(line)
             elif "consumer" in line_l or "care" in line_l or "complaint" in line_l or "helpline" in line_l:
                 care_lines.append(line)
                 
-        if mfd_by_lines:
+        if mfd_by_lines and not extracted["manufacturer_name"]:
             parts = mfd_by_lines[0].split(":") if ":" in mfd_by_lines[0] else mfd_by_lines[0].split("by")
             extracted["manufacturer_name"] = parts[-1].strip()
             extracted["manufacturer_address"] = " ".join(mfd_by_lines).strip()
@@ -220,7 +234,7 @@ def parse_entities_with_nlp(text_lines: List[str]) -> Dict[str, Any]:
     orgs = [ent.text.strip() for ent in doc.ents if ent.label_ == "ORG"]
     locs = [ent.text.strip() for ent in doc.ents if ent.label_ in ["GPE", "LOC", "FAC"]]
     
-    if orgs:
+    if orgs and not extracted["manufacturer_name"]:
         extracted["manufacturer_name"] = orgs[0]
         if len(orgs) > 1 and ("imported" in joined_text.lower() or "importer" in joined_text.lower()):
             extracted["importer_name"] = orgs[1]
@@ -243,110 +257,72 @@ def extract_fields_from_ocr(ocr_regions: List[Dict[str, Any]], raw_text: str) ->
     # Generic Name detection
     generic_name = None
     if text_lines:
-        for line in text_lines[:4]:
-            if len(line) > 3 and not any(k in line.lower() for k in ["mrp", "net qty", "fssai", "batch", "pkd", "mfd", "rs.", "₹", "size"]):
+        for line in text_lines[:6]:
+            if len(line) > 3 and not any(k in line.lower() for k in ["mrp", "net wt", "net weight", "net qty", "fssai", "batch", "pkd", "mfd", "rs.", "₹", "size", "store in", "feedback"]):
                 generic_name = line
                 break
         if not generic_name:
             generic_name = text_lines[0]
             
-    fields = {
+    fields: Dict[str, Any] = {
         "generic_name": generic_name,
-        "generic_name_confidence": 0.90 if generic_name else 0.0,
-        
         "mrp": None,
         "mrp_confidence": 0.0,
-        
         "net_quantity": None,
         "net_quantity_confidence": 0.0,
-        
         "mfg_date": None,
         "mfg_date_confidence": 0.0,
-        
         "country_of_origin": "India",
-        "country_of_origin_confidence": 0.50,
-        
+        "country_of_origin_confidence": 0.90,
         "manufacturer_name": None,
         "manufacturer_address": None,
-        
-        "consumer_care_name": None,
-        "consumer_care_phone": None,
-        "consumer_care_email": None,
-        "consumer_care_address": None,
-        
-        "is_imported": False,
         "importer_name": None,
         "importer_address": None,
-        
-        # FSSAI Food & Beverage Declarations
+        "consumer_care_email": None,
+        "consumer_care_phone": None,
+        "consumer_care_address": None,
         "fssai_license_no": None,
-        "fssai_confidence": 0.0,
-        "nutrition_table": {},
-        "ingredients_text": None,
-        "allergen_statement": None,
-        "veg_nonveg": "veg",
+        "ingredients": None,
+        "allergen_info": None,
+        "nutrition_facts": {},
         "expiry_date": None,
         "best_before_date": None,
-        
-        # Apparel & Textile Declarations
         "fiber_composition": None,
-        "apparel_size": None
+        "apparel_size": None,
+        "batch_no": None
     }
     
-    # 1. Parse structured fields via Regex
+    # Extract Batch Number
+    batch_match = re.search(r"(?i)(?:batch\s*(?:no\.?|number)?|lot\s*(?:no\.?|number)?)\s*[:\-\s]*([A-Za-z0-9\-\./]+)", raw_text)
+    if batch_match:
+        fields["batch_no"] = batch_match.group(1).strip()
+        
+    # 1. Regex Extractions
     fields["mrp"], fields["mrp_confidence"] = extract_mrp(raw_text)
     fields["net_quantity"], fields["net_quantity_confidence"] = extract_net_quantity(raw_text)
     fields["mfg_date"], fields["mfg_date_confidence"] = extract_mfg_date(raw_text)
     fields["country_of_origin"], fields["country_of_origin_confidence"] = extract_country_of_origin(raw_text)
-    fields["fssai_license_no"], fields["fssai_confidence"] = extract_fssai_number(raw_text)
-    
-    # Extract FSSAI Food & Beverage fields
-    fields["ingredients_text"], fields["allergen_statement"] = extract_ingredients_and_allergens(raw_text)
-    fields["nutrition_table"] = extract_nutrition_facts(raw_text)
+    fields["fssai_license_no"], _ = extract_fssai_number(raw_text)
+    fields["ingredients"], fields["allergen_info"] = extract_ingredients_and_allergens(raw_text)
+    fields["nutrition_facts"] = extract_nutrition_facts(raw_text)
     fields["expiry_date"], fields["best_before_date"] = extract_dates_breakdown(raw_text)
-    
-    # Extract Apparel & Textile fields
     fields["fiber_composition"], fields["apparel_size"] = extract_fiber_and_size(raw_text)
     
-    # Veg / Non-Veg detection
-    raw_lower = raw_text.lower()
-    if any(k in raw_lower for k in ["non-veg", "non veg", "chicken", "meat", "egg", "fish", "mutton", "prawn", "pork", "beef"]):
-        fields["veg_nonveg"] = "non_veg"
-    else:
-        fields["veg_nonveg"] = "veg"
-    
-    if any(k in raw_lower for k in ["imported", "importer", "import date", "luxury imports"]):
-        fields["is_imported"] = True
-        
-    # 2. Extract manufacturer, importer, and consumer care details
-    entities = parse_entities_with_nlp(text_lines)
-    fields["manufacturer_name"] = entities.get("manufacturer_name")
-    fields["manufacturer_address"] = entities.get("manufacturer_address")
-    fields["importer_name"] = entities.get("importer_name")
-    fields["importer_address"] = entities.get("importer_address")
-    
-    # 3. Consumer Care extraction
+    # 2. Contact details extraction
     emails = EMAIL_REGEX.findall(raw_text)
     if emails:
         fields["consumer_care_email"] = emails[0]
+        
     phones = PHONE_REGEX.findall(raw_text)
     if phones:
         fields["consumer_care_phone"] = phones[0]
         
-    for idx, line in enumerate(text_lines):
-        if any(k in line.lower() for k in ["consumer care", "customer care", "complaints", "helpline", "feedback", "customer support"]):
-            care_parts = []
-            for i in range(idx, min(idx + 3, len(text_lines))):
-                l = text_lines[i]
-                if not any(k in l.lower() for k in ["mrp", "quantity", "pkd", "size", "cotton"]):
-                    care_parts.append(l)
-            if care_parts:
-                fields["consumer_care_address"] = " ".join(care_parts).strip()
-            break
-            
-    if fields["consumer_care_email"] or fields["consumer_care_phone"]:
-        fields["consumer_care_name"] = fields["manufacturer_name"] or "Consumer Cell"
-        if not fields["consumer_care_address"]:
-            fields["consumer_care_address"] = fields["manufacturer_address"]
-            
+    # 3. NLP Extraction for entities
+    nlp_results = parse_entities_with_nlp(text_lines)
+    fields["manufacturer_name"] = nlp_results.get("manufacturer_name")
+    fields["manufacturer_address"] = nlp_results.get("manufacturer_address")
+    fields["importer_name"] = nlp_results.get("importer_name")
+    fields["importer_address"] = nlp_results.get("importer_address")
+    fields["consumer_care_address"] = nlp_results.get("consumer_care_address")
+    
     return fields
