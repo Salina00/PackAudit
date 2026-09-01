@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Sidebar from "@/components/Sidebar";
 
 interface Rule {
   rule_id: string;
@@ -49,140 +50,153 @@ export default function RulesPage() {
       : rules;
 
   return (
-    <div className="flex-1 p-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] font-mono">
-            Statutory Compliance Rules Database (25 Rules)
-          </h1>
-          <p className="text-sm text-[#737373] mt-1 font-mono">
-            Statutory rulebook for Legal Metrology Rules 2011, FSSAI Food Regulations 2020, and Textile Labeling Standards.
-          </p>
+    <div className="flex min-h-screen bg-[#0A0A0A] text-[#EDEDED]">
+      <Sidebar />
+
+      <main className="flex-1 p-8 space-y-6 overflow-y-auto h-screen">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-[#EDEDED] font-mono">
+              Statutory Compliance Rules Database (25 Rules)
+            </h1>
+            <p className="text-sm text-[#737373] mt-1 font-mono">
+              Statutory rulebook for Legal Metrology Rules 2011, FSSAI Food Regulations 2020, and Textile Labeling Standards.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <span className="px-3 py-1 rounded bg-[#3B82F6]/10 text-[#3B82F6] font-mono text-xs font-bold">
+              12 Legal Metrology
+            </span>
+            <span className="px-3 py-1 rounded bg-[#10B981]/10 text-[#10B981] font-mono text-xs font-bold">
+              6 FSSAI Food
+            </span>
+            <span className="px-3 py-1 rounded bg-[#EC4899]/10 text-[#EC4899] font-mono text-xs font-bold">
+              7 Textile & Apparel
+            </span>
+          </div>
         </div>
 
-        {/* Filter Tabs */}
-        <div className="flex gap-1.5 p-1 bg-[#0F0F0F] border border-[#262626] rounded text-xs font-mono">
+        {/* Tab Filters */}
+        <div className="flex gap-2 border-b border-[#262626] pb-3 text-xs font-mono">
           <button
             onClick={() => setActiveTab("all")}
             className={`px-3 py-1.5 rounded transition ${
               activeTab === "all"
-                ? "bg-[#10B981] text-[#0A0A0A] font-bold"
-                : "text-[#A3A3A3] hover:text-[#EDEDED]"
+                ? "bg-[#262626] text-[#EDEDED] font-bold"
+                : "text-[#737373] hover:text-[#EDEDED]"
             }`}
           >
-            All ({rules.length})
+            All Rules ({rules.length})
           </button>
           <button
             onClick={() => setActiveTab("metrology")}
             className={`px-3 py-1.5 rounded transition ${
               activeTab === "metrology"
-                ? "bg-[#10B981] text-[#0A0A0A] font-bold"
-                : "text-[#A3A3A3] hover:text-[#EDEDED]"
+                ? "bg-[#3B82F6]/20 text-[#3B82F6] font-bold"
+                : "text-[#737373] hover:text-[#EDEDED]"
             }`}
           >
-            Legal Metrology ({metrologyRules.length})
+            Legal Metrology 2011 ({metrologyRules.length})
           </button>
           <button
             onClick={() => setActiveTab("fssai")}
             className={`px-3 py-1.5 rounded transition ${
               activeTab === "fssai"
-                ? "bg-[#10B981] text-[#0A0A0A] font-bold"
-                : "text-[#A3A3A3] hover:text-[#EDEDED]"
+                ? "bg-[#10B981]/20 text-[#10B981] font-bold"
+                : "text-[#737373] hover:text-[#EDEDED]"
             }`}
           >
-            FSSAI Food ({fssaiRules.length})
+            FSSAI Food 2020 ({fssaiRules.length})
           </button>
           <button
             onClick={() => setActiveTab("apparel")}
             className={`px-3 py-1.5 rounded transition ${
               activeTab === "apparel"
-                ? "bg-[#10B981] text-[#0A0A0A] font-bold"
-                : "text-[#A3A3A3] hover:text-[#EDEDED]"
+                ? "bg-[#EC4899]/20 text-[#EC4899] font-bold"
+                : "text-[#737373] hover:text-[#EDEDED]"
             }`}
           >
-            Apparel & Textile ({apparelRules.length})
+            Apparel & Textile 2011 ({apparelRules.length})
           </button>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="border border-[#262626] bg-[#0F0F0F] rounded p-12 text-center text-sm text-[#737373] font-mono">
-          Loading statutory parameters from PostgreSQL database...
-        </div>
-      ) : error ? (
-        <div className="border border-[#DC2626]/20 bg-[#DC2626]/5 text-[#EF4444] rounded p-6 text-sm font-mono">
-          Error: {error}
-        </div>
-      ) : (
-        <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-[#262626] bg-[#151515] text-xs font-bold text-[#A3A3A3] font-mono">
-                <th className="p-4">Check ID</th>
-                <th className="p-4">Statutory Citation</th>
-                <th className="p-4">Rule Description & Auto-Fix Guidance</th>
-                <th className="p-4">Type</th>
-                <th className="p-4">Severity</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#262626] text-sm text-[#EDEDED]">
-              {displayedRules.map((rule) => {
-                const isFssai = rule.rule_id.startsWith("fssai_");
-                const isApparel = rule.rule_id.startsWith("apparel_");
-                return (
-                  <tr key={rule.rule_id} className="hover:bg-[#151515] transition">
-                    <td className="p-4 font-mono font-bold text-[#A3A3A3] text-xs space-y-1">
-                      <div>{rule.rule_id}</div>
-                      <span
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono inline-block ${
-                          isFssai
-                            ? "bg-[#10B981]/10 text-[#10B981]"
-                            : isApparel
-                            ? "bg-[#EC4899]/10 text-[#F472B6]"
-                            : "bg-[#3B82F6]/10 text-[#60A5FA]"
-                        }`}
-                      >
-                        {isFssai ? "FSSAI 2020" : isApparel ? "TEXTILE 2011" : "LM 2011"}
-                      </span>
-                    </td>
-                    <td className="p-4 font-mono text-xs text-[#EDEDED] font-semibold max-w-[180px]">
-                      {rule.rule_citation}
-                    </td>
-                    <td className="p-4 max-w-md space-y-1.5">
-                      <div className="text-xs text-[#C2C2C2] leading-relaxed">
-                        {rule.description}
-                      </div>
-                      {rule.fix_suggestion && (
-                        <div className="text-[11px] text-[#10B981] font-mono bg-[#10B981]/5 border border-[#10B981]/15 rounded p-2 flex items-start gap-1.5">
-                          <span className="font-bold shrink-0">💡 Fix Guidance:</span>
-                          <span className="leading-snug">{rule.fix_suggestion}</span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-4 font-mono text-xs text-[#737373] uppercase">
-                      {rule.check_type}
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs font-bold font-mono ${
-                          rule.severity === "CRITICAL"
-                            ? "bg-[#DC2626]/10 text-[#EF4444]"
-                            : rule.severity === "MAJOR"
-                            ? "bg-[#F59E0B]/10 text-[#F59E0B]"
-                            : "bg-[#737373]/10 text-[#A3A3A3]"
-                        }`}
-                      >
-                        {rule.severity}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+        {/* Rules Table */}
+        {loading ? (
+          <div className="text-center py-12 text-[#737373] font-mono text-xs">
+            Loading rule database definitions from PostgreSQL...
+          </div>
+        ) : error ? (
+          <div className="p-4 border border-[#DC2626]/20 bg-[#DC2626]/5 rounded text-[#EF4444] font-mono text-xs">
+            {error}
+          </div>
+        ) : (
+          <div className="border border-[#262626] bg-[#0F0F0F] rounded overflow-hidden">
+            <table className="w-full text-left border-collapse font-mono text-xs">
+              <thead>
+                <tr className="border-b border-[#262626] bg-[#151515] text-[#A3A3A3] font-bold">
+                  <th className="p-3 w-32">Rule Citation</th>
+                  <th className="p-3 w-28">Domain</th>
+                  <th className="p-3 w-40">Rule Name</th>
+                  <th className="p-3">Statutory Description & Auto-Fix Guidance</th>
+                  <th className="p-3 w-24">Severity</th>
+                  <th className="p-3 w-28">Check Type</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#262626]">
+                {displayedRules.map((rule) => {
+                  const isFssai = rule.rule_id.startsWith("fssai_");
+                  const isApparel = rule.rule_id.startsWith("apparel_");
+                  return (
+                    <tr key={rule.rule_id} className="hover:bg-[#151515] transition">
+                      <td className="p-3 font-bold text-[#EDEDED]">{rule.rule_citation}</td>
+                      <td className="p-3">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                            isFssai
+                              ? "bg-[#10B981]/10 text-[#10B981]"
+                              : isApparel
+                              ? "bg-[#EC4899]/10 text-[#EC4899]"
+                              : "bg-[#3B82F6]/10 text-[#3B82F6]"
+                          }`}
+                        >
+                          {isFssai ? "FSSAI Food" : isApparel ? "Textile" : "Metrology"}
+                        </span>
+                      </td>
+                      <td className="p-3 text-[#A3A3A3]">{rule.rule_id}</td>
+                      <td className="p-3 space-y-1">
+                        <div className="text-[#C2C2C2] leading-relaxed">{rule.description}</div>
+                        {rule.fix_suggestion && (
+                          <div className="text-[11px] text-[#10B981] bg-[#10B981]/5 p-1.5 rounded border border-[#10B981]/20">
+                            💡 <b>Fix Template:</b> {rule.fix_suggestion}
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            rule.severity === "CRITICAL"
+                              ? "bg-[#DC2626]/20 text-[#EF4444]"
+                              : rule.severity === "MAJOR"
+                              ? "bg-[#F59E0B]/20 text-[#F59E0B]"
+                              : "bg-[#262626] text-[#737373]"
+                          }`}
+                        >
+                          {rule.severity}
+                        </span>
+                      </td>
+                      <td className="p-3 uppercase text-[#737373] text-[10px]">
+                        {rule.check_type}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
