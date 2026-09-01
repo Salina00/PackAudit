@@ -60,11 +60,14 @@ class RuleCheckResponse(BaseModel):
 
 class ScanSummaryResponse(BaseModel):
     id: str
+    product_name: Optional[str] = None
     created_at: datetime
     input_type: str
     authenticity_score: float
     object_classification: str
     image_path: Optional[str] = None
+    compliance_status: Optional[str] = "COMPLIANT"
+    fail_count: Optional[int] = 0
 
     class Config:
         from_attributes = True

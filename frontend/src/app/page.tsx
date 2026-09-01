@@ -48,10 +48,14 @@ interface ScanDetail {
 
 interface ScanSummary {
   id: string;
+  product_name?: string;
   created_at: string;
   input_type: string;
   authenticity_score: number;
   object_classification: string;
+  image_path?: string | null;
+  compliance_status?: string;
+  fail_count?: number;
 }
 
 export default function Dashboard() {
@@ -142,6 +146,36 @@ export default function Dashboard() {
       loadHistory();
     }
   }, [currentUser]);
+
+  // Handle Deleting a Single Scan
+  const handleDeleteScan = async (scanId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`${API_BASE}/api/scans/${scanId}`, { method: "DELETE" });
+      if (res.ok) {
+        setHistory((prev) => prev.filter((s) => s.id !== scanId));
+        if (selectedScan && selectedScan.id === scanId) {
+          setSelectedScan(null);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete scan", err);
+    }
+  };
+
+  // Handle Clearing All Past History
+  const handleClearAllHistory = async () => {
+    if (!confirm("Are you sure you want to clear all audit history records?")) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/scans/history/clear`, { method: "DELETE" });
+      if (res.ok) {
+        setHistory([]);
+        setSelectedScan(null);
+      }
+    } catch (err) {
+      console.error("Failed to clear history", err);
+    }
+  };
 
   // Handle Login & Signup Submit
   const handleAuthSubmit = async (e: React.FormEvent) => {
@@ -657,7 +691,7 @@ export default function Dashboard() {
 
         {/* Main Workspace Layout */}
         <div className="flex-1 grid grid-cols-12 overflow-hidden h-[calc(100vh-3.5rem)]">
-          {/* Left Side: Operations */}
+          {/* Left Side: Operations & History */}
           <section className="col-span-4 border-r border-[#262626] bg-[#0A0A0A] p-6 space-y-6 overflow-y-auto flex flex-col h-full">
             {/* 3-Category Regulatory Domain Selector */}
             <div className="space-y-2">
@@ -817,49 +851,104 @@ export default function Dashboard() {
               </form>
             </div>
 
-            {/* Audit History Log */}
+            {/* Compliance History Log with Rich Cards & Deletion Controls */}
             <div className="flex-1 flex flex-col min-h-0 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
-                  Compliance History
-                </h2>
-                <span className="text-[10px] font-mono text-[#737373]">
-                  {Array.isArray(history) ? history.length : 0} Audits
-                </span>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs font-bold text-[#A3A3A3] font-mono tracking-wider uppercase">
+                    Compliance History
+                  </h2>
+                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#262626] text-[#A3A3A3]">
+                    {Array.isArray(history) ? history.length : 0}
+                  </span>
+                </div>
+
+                {Array.isArray(history) && history.length > 0 && (
+                  <button
+                    onClick={handleClearAllHistory}
+                    className="text-[10px] font-mono text-[#737373] hover:text-[#EF4444] transition underline"
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
 
               {loadingHistory ? (
-                <div className="text-xs text-[#737373] p-4 font-mono">Loading history logs...</div>
+                <div className="text-xs text-[#737373] p-4 font-mono text-center">Loading audit records...</div>
               ) : !Array.isArray(history) || history.length === 0 ? (
-                <div className="text-xs text-[#737373] border border-[#262626] rounded p-6 text-center font-mono">
-                  No past compliance audits found.
+                <div className="text-xs text-[#737373] border border-[#262626] rounded-lg p-6 text-center font-mono">
+                  No past compliance audits found. Scan a product label to record your first audit.
                 </div>
               ) : (
-                <div className="flex-1 overflow-y-auto space-y-1.5 min-h-0 pr-1">
-                  {(Array.isArray(history) ? history : []).map((scan) => (
-                    <button
-                      key={scan.id}
-                      onClick={() => loadScanDetails(scan.id)}
-                      className="w-full p-3 text-left border border-[#262626] bg-[#0F0F0F] hover:bg-[#151515] transition rounded flex items-center justify-between"
-                    >
-                      <div className="space-y-1">
-                        <div className="font-mono text-xs font-bold text-[#EDEDED] truncate max-w-[160px]">
-                          ID: {scan.id.slice(0, 8)}
+                <div className="flex-1 overflow-y-auto space-y-2 min-h-0 pr-1">
+                  {(Array.isArray(history) ? history : []).map((scan) => {
+                    const isSelected = selectedScan && selectedScan.id === scan.id;
+                    const status = scan.compliance_status || "COMPLIANT";
+                    const isFail = status === "NON-COMPLIANT";
+                    const isWarn = status === "WARNING";
+
+                    return (
+                      <div
+                        key={scan.id}
+                        onClick={() => loadScanDetails(scan.id)}
+                        className={`w-full p-3 text-left border rounded-lg transition flex items-center justify-between gap-3 cursor-pointer group ${
+                          isSelected
+                            ? "bg-[#1A1A1A] border-[#10B981]/50 shadow-md"
+                            : "bg-[#0F0F0F] border-[#262626] hover:bg-[#141414] hover:border-[#333333]"
+                        }`}
+                      >
+                        {/* Thumbnail if available */}
+                        {scan.image_path ? (
+                          <div className="w-10 h-10 rounded bg-black shrink-0 overflow-hidden border border-[#262626]">
+                            <img
+                              src={`${API_BASE}${scan.image_path}`}
+                              alt="Thumbnail"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded bg-[#1A1A1A] shrink-0 flex items-center justify-center text-sm border border-[#262626]">
+                            🔗
+                          </div>
+                        )}
+
+                        {/* Product Info */}
+                        <div className="flex-1 min-w-0 space-y-0.5">
+                          <div className="font-mono text-xs font-bold text-[#EDEDED] truncate">
+                            {scan.product_name || "Packaged Product"}
+                          </div>
+                          <div className="text-[10px] font-mono text-[#737373] flex items-center gap-1.5 truncate">
+                            <span>{new Date(scan.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            <span>•</span>
+                            <span className="uppercase">{scan.input_type}</span>
+                          </div>
                         </div>
-                        <div className="text-[10px] font-mono text-[#737373]">
-                          {new Date(scan.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | {scan.input_type.toUpperCase()}
+
+                        {/* Status Badge & Delete Icon */}
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span
+                            className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                              isFail
+                                ? "bg-[#DC2626]/20 text-[#EF4444]"
+                                : isWarn
+                                ? "bg-[#F59E0B]/20 text-[#F59E0B]"
+                                : "bg-[#10B981]/20 text-[#10B981]"
+                            }`}
+                          >
+                            {status}
+                          </span>
+
+                          <button
+                            onClick={(e) => handleDeleteScan(scan.id, e)}
+                            title="Delete this scan"
+                            className="opacity-0 group-hover:opacity-100 text-[11px] text-[#737373] hover:text-[#EF4444] transition px-1"
+                          >
+                            ✕
+                          </button>
                         </div>
                       </div>
-                      <div className="text-right space-y-1">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#262626] text-[#A3A3A3] block w-fit ml-auto">
-                          {scan.object_classification}
-                        </span>
-                        <span className="text-[10px] font-mono text-[#737373] block">
-                          Auth: {scan.authenticity_score}%
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -307,10 +307,63 @@ def scan_listing_url(
 @router.get("/history", response_model=List[ScanSummaryResponse])
 def get_scan_history(db: Session = Depends(get_db)):
     """
-    Returns latest 20 scans for the sidebar audit history log.
+    Returns latest 25 scans for the sidebar audit history log with product names and status.
     """
-    scans = db.query(Scan).order_by(Scan.created_at.desc()).limit(20).all()
-    return scans
+    scans = db.query(Scan).order_by(Scan.created_at.desc()).limit(25).all()
+    results = []
+    for s in scans:
+        # Extract product generic name if available
+        prod_name = None
+        for f in (s.fields or []):
+            if f.field_name == "generic_name" and f.field_value:
+                prod_name = f.field_value
+                break
+                
+        fail_cnt = sum(1 for c in (s.checks or []) if c.status == "fail")
+        unverif_cnt = sum(1 for c in (s.checks or []) if c.status == "unverifiable")
+        
+        if fail_cnt > 0:
+            status = "NON-COMPLIANT"
+        elif unverif_cnt > 0:
+            status = "WARNING"
+        else:
+            status = "COMPLIANT"
+            
+        results.append({
+            "id": s.id,
+            "product_name": prod_name or s.object_classification.replace("_", " ").title(),
+            "created_at": s.created_at,
+            "input_type": s.input_type,
+            "authenticity_score": s.authenticity_score or 0.0,
+            "object_classification": s.object_classification,
+            "image_path": s.image_path,
+            "compliance_status": status,
+            "fail_count": fail_cnt
+        })
+    return results
+
+@router.delete("/history/clear")
+def clear_all_history(db: Session = Depends(get_db)):
+    """
+    Clears all past scans and audit history from the database.
+    """
+    db.query(ExtractedField).delete()
+    db.query(RuleCheck).delete()
+    deleted_count = db.query(Scan).delete()
+    db.commit()
+    return {"message": f"Successfully cleared {deleted_count} scan audit records."}
+
+@router.delete("/{scan_id}")
+def delete_scan(scan_id: str, db: Session = Depends(get_db)):
+    """
+    Deletes a specific scan by ID from the database.
+    """
+    scan = db.query(Scan).filter(Scan.id == scan_id).first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan record not found.")
+    db.delete(scan)
+    db.commit()
+    return {"message": "Scan record deleted successfully.", "id": scan_id}
 
 @router.get("/{scan_id}", response_model=ScanDetailResponse)
 def get_scan_by_id(scan_id: str, db: Session = Depends(get_db)):
