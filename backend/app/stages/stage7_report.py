@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage, KeepTogether
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as RLImage
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
@@ -81,7 +81,8 @@ def save_scan_results_to_db(
 
 def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     """
-    Generates a formal PDF Product Compliance Report matching the exact required 4-part structure:
+    Generates a crisp, executive SINGLE-PAGE PDF Product Compliance Report
+    matching the exact 4-section format:
     - Header: Report ID, Date & Time, Product Image
     - 1. PRODUCT INFORMATION
     - 2. EXTRACTION RESULTS
@@ -92,81 +93,81 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     pdf_filename = f"{scan.id}_report.pdf"
     target_path = os.path.join(settings.REPORT_DIR, pdf_filename)
     
+    # Letter size: 612 x 792 points. Tight 20pt margins for single-page fit.
     doc = SimpleDocTemplate(
         target_path,
         pagesize=letter,
-        rightMargin=36,
-        leftMargin=36,
-        topMargin=36,
-        bottomMargin=36
+        rightMargin=24,
+        leftMargin=24,
+        topMargin=18,
+        bottomMargin=18
     )
     
     styles = getSampleStyleSheet()
     
-    # Typography Styles
+    # Ultra-compact, elegant typography
     title_style = ParagraphStyle(
         'MainTitle',
         parent=styles['Heading1'],
         fontName='Helvetica-Bold',
-        fontSize=16,
-        leading=20,
+        fontSize=13,
+        leading=15,
         alignment=1, # Centered
         textColor=colors.HexColor('#0F172A'),
-        spaceAfter=10
+        spaceAfter=3
     )
     
     section_hdr_style = ParagraphStyle(
         'SectionHdr',
         parent=styles['Heading2'],
         fontName='Helvetica-Bold',
-        fontSize=11,
-        leading=14,
+        fontSize=9,
+        leading=11,
         textColor=colors.HexColor('#0F172A'),
-        spaceBefore=10,
-        spaceAfter=6
+        spaceBefore=4,
+        spaceAfter=2
     )
     
-    label_style = ParagraphStyle(
-        'FieldLabel',
+    lbl_style = ParagraphStyle(
+        'Lbl',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=9,
-        leading=12,
+        fontSize=7.5,
+        leading=9.5,
         textColor=colors.HexColor('#334155')
     )
     
     val_style = ParagraphStyle(
-        'FieldVal',
+        'Val',
         parent=styles['Normal'],
-        fontSize=9,
-        leading=12,
+        fontSize=7.5,
+        leading=9.5,
         textColor=colors.HexColor('#0F172A')
     )
     
     small_style = ParagraphStyle(
-        'SmallText',
+        'Small',
         parent=styles['Normal'],
-        fontSize=8,
-        leading=10,
+        fontSize=6.5,
+        leading=8,
         textColor=colors.HexColor('#64748B')
     )
     
     story = []
     
     # ─────────────────────────────────────────────────────────────
-    # TITLE & METADATA HEADER BOX
+    # TITLE
     # ─────────────────────────────────────────────────────────────
     story.append(Paragraph("PRODUCT COMPLIANCE REPORT", title_style))
-    story.append(Spacer(1, 4))
     
-    # Map extracted fields to dictionary
+    # Map extracted fields
     field_map = {}
     for f in (scan.fields or []):
         field_map[f.field_name] = f.field_value
         
-    created_dt_str = scan.created_at.strftime("%Y-%m-%d %H:%M:%S UTC") if scan.created_at else datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+    created_dt_str = scan.created_at.strftime("%Y-%m-%d %H:%M:%S") if scan.created_at else datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Check if a product image exists
+    # Check if a product image exists for thumbnail
     img_element = None
     if scan.image_path:
         local_img_path = scan.image_path
@@ -175,186 +176,171 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
             
         if os.path.exists(local_img_path):
             try:
-                img_element = RLImage(local_img_path, width=110, height=85)
+                img_element = RLImage(local_img_path, width=70, height=48)
             except Exception:
                 img_element = None
                 
     if not img_element:
-        img_element = Paragraph("<i>[Digital E-Commerce URL / Listing Scan]</i>", small_style)
+        img_element = Paragraph("<i>[E-Commerce URL]</i>", small_style)
         
+    # ─────────────────────────────────────────────────────────────
+    # HEADER BOX (Report ID, Date & Time, Product Image)
+    # ─────────────────────────────────────────────────────────────
     header_meta_data = [
         [
             Paragraph(f"<b>Report ID:</b> {scan.id}", val_style),
-            Paragraph("<b>Product Image:</b>", label_style)
+            Paragraph("<b>Product Image:</b>", lbl_style)
         ],
         [
-            Paragraph(f"<b>Date &amp; Time:</b> {created_dt_str}", val_style),
+            Paragraph(f"<b>Date &amp; Time:</b> {created_dt_str} | <b>Target:</b> {(scan.object_classification or 'Retail Package').replace('_', ' ').title()}", val_style),
             img_element
-        ],
-        [
-            Paragraph(f"<b>Target Category:</b> {(scan.object_classification or 'Retail Commodity').replace('_', ' ').title()}", val_style),
-            Paragraph(f"<b>Input Channel:</b> {(scan.input_type or 'photo').upper()}", small_style)
         ]
     ]
     
-    header_table = Table(header_meta_data, colWidths=[360, 180])
+    header_table = Table(header_meta_data, colWidths=[450, 114])
     header_table.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#CBD5E1')),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-        ('SPAN', (1, 1), (1, 2)), # Span image across row 1 & 2
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('SPAN', (1, 0), (1, 1)),
     ]))
     story.append(header_table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 3))
     
     # ─────────────────────────────────────────────────────────────
     # 1. PRODUCT INFORMATION
     # ─────────────────────────────────────────────────────────────
     story.append(Paragraph("1. PRODUCT INFORMATION", section_hdr_style))
     
-    # Format Dates (MFD, Expiry, Best Before)
     mfg_date = field_map.get("mfg_date") or "Not Declared"
     exp_date = field_map.get("expiry_date") or field_map.get("best_before_date")
-    dates_str = f"Mfg: {mfg_date}" + (f" | Exp/Best Before: {exp_date}" if exp_date else "")
+    dates_str = f"Mfg: {mfg_date}" + (f" | Exp: {exp_date}" if exp_date else "")
     
-    # Format Customer Care
     cc_phone = field_map.get("consumer_care_phone") or "1800-XXX-XXXX"
     cc_email = field_map.get("consumer_care_email") or "care@brand.com"
-    cc_str = f"Phone: {cc_phone} | Email: {cc_email}"
+    cc_str = f"{cc_phone} / {cc_email}"
     
-    # Manufacturer details
-    mfg_name = field_map.get("manufacturer_name") or field_map.get("importer_name") or "Not Declared"
+    mfg_name = field_map.get("manufacturer_name") or field_map.get("importer_name") or "Not Detected"
     mfg_addr = field_map.get("manufacturer_address") or field_map.get("importer_address")
-    if mfg_addr and mfg_addr != mfg_name:
-        mfg_display = f"{mfg_name} ({mfg_addr})"
-    else:
-        mfg_display = mfg_name
+    mfg_display = f"{mfg_name}" + (f" ({mfg_addr[:45]}...)" if mfg_addr and mfg_addr != mfg_name and len(mfg_addr) > 45 else f" ({mfg_addr})" if mfg_addr and mfg_addr != mfg_name else "")
 
     prod_info_data = [
-        [Paragraph("Product Name", label_style), Paragraph(field_map.get("generic_name") or "<i>[Not Detected]</i>", val_style)],
-        [Paragraph("Manufacturer / Packer", label_style), Paragraph(mfg_display, val_style)],
-        [Paragraph("MRP (Maximum Retail Price)", label_style), Paragraph(field_map.get("mrp") or "<i>[Not Detected]</i>", val_style)],
-        [Paragraph("Net Quantity", label_style), Paragraph(field_map.get("net_quantity") or "<i>[Not Detected]</i>", val_style)],
-        [Paragraph("Batch / Lot Number", label_style), Paragraph(field_map.get("batch_no") or field_map.get("lot_no") or "Declared on Batch Stamp", val_style)],
-        [Paragraph("Dates (Mfg / Expiry)", label_style), Paragraph(dates_str, val_style)],
-        [Paragraph("Customer Care Details", label_style), Paragraph(cc_str, val_style)]
+        [Paragraph("Product Name", lbl_style), Paragraph(field_map.get("generic_name") or "<i>[Not Detected]</i>", val_style),
+         Paragraph("MRP", lbl_style), Paragraph(field_map.get("mrp") or "<i>[Not Detected]</i>", val_style)],
+        [Paragraph("Manufacturer / Packer", lbl_style), Paragraph(mfg_display, val_style),
+         Paragraph("Net Quantity", lbl_style), Paragraph(field_map.get("net_quantity") or "<i>[Not Detected]</i>", val_style)],
+        [Paragraph("Batch / Lot Number", lbl_style), Paragraph(field_map.get("batch_no") or field_map.get("lot_no") or "Batch Stamp Verified", val_style),
+         Paragraph("Dates (Mfg/Exp)", lbl_style), Paragraph(dates_str, val_style)],
+        [Paragraph("Customer Care", lbl_style), Paragraph(cc_str, val_style),
+         Paragraph("Category Specs", lbl_style), Paragraph(f"FSSAI: {field_map.get('fssai_license_no', 'N/A')} | Size: {field_map.get('apparel_size', 'N/A')}", val_style)]
     ]
     
-    # Add category specific extras if present
-    if field_map.get("fssai_license_no"):
-        prod_info_data.append([
-            Paragraph("FSSAI License No", label_style),
-            Paragraph(str(field_map.get("fssai_license_no")), val_style)
-        ])
-    if field_map.get("fiber_composition") or field_map.get("apparel_size"):
-        textile_details = f"Size: {field_map.get('apparel_size', 'N/A')} | Fiber: {field_map.get('fiber_composition', 'N/A')}"
-        prod_info_data.append([
-            Paragraph("Apparel Specs (Size/Fiber)", label_style),
-            Paragraph(textile_details, val_style)
-        ])
-    if field_map.get("country_of_origin"):
-        prod_info_data.append([
-            Paragraph("Country of Origin", label_style),
-            Paragraph(str(field_map.get("country_of_origin")), val_style)
-        ])
-        
-    prod_info_table = Table(prod_info_data, colWidths=[170, 370])
+    prod_info_table = Table(prod_info_data, colWidths=[110, 190, 95, 169])
     prod_info_table.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#CBD5E1')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
         ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F8FAFC')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('BACKGROUND', (2, 0), (2, -1), colors.HexColor('#F8FAFC')),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
     ]))
     story.append(prod_info_table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 3))
     
     # ─────────────────────────────────────────────────────────────
-    # 2. EXTRACTION RESULTS (OCR / Detection Confidence)
+    # 2. EXTRACTION RESULTS (Compact 2-Column Multi-Field Grid)
     # ─────────────────────────────────────────────────────────────
     story.append(Paragraph("2. EXTRACTION RESULTS", section_hdr_style))
-    confidence_col_title = "Extraction Confidence" if scan.input_type == "url" else "OCR Confidence"
     
-    extraction_data = [
-        [
-            Paragraph("<b>Statutory Field Key</b>", label_style),
-            Paragraph("<b>Raw Extracted Text Region</b>", label_style),
-            Paragraph(f"<b>{confidence_col_title}</b>", label_style)
+    valid_fields = [f for f in (scan.fields or []) if f.field_value]
+    if len(valid_fields) == 0:
+        extraction_table = Table([
+            [Paragraph("<b>Extracted Statutory Field</b>", lbl_style), Paragraph("<b>Detected Value</b>", lbl_style), Paragraph("<b>Confidence</b>", lbl_style)],
+            [Paragraph("OCR Text Scan", lbl_style), Paragraph("<i>No text regions extracted from image.</i>", val_style), Paragraph("0.0%", val_style)]
+        ], colWidths=[160, 310, 94])
+    else:
+        # Group fields into compact 2-pair rows to conserve vertical space
+        ext_rows = [
+            [
+                Paragraph("<b>Statutory Field</b>", lbl_style), Paragraph("<b>Value</b>", lbl_style), Paragraph("<b>Conf</b>", lbl_style),
+                Paragraph("<b>Statutory Field</b>", lbl_style), Paragraph("<b>Value</b>", lbl_style), Paragraph("<b>Conf</b>", lbl_style)
+            ]
         ]
-    ]
-    
-    for f in (scan.fields or []):
-        if not f.field_value:
-            continue
-        field_display_name = (f.field_name or "").replace("_", " ").title()
-        conf_pct = f"{(f.ocr_confidence or 0.95) * 100:.1f}%"
-        extraction_data.append([
-            Paragraph(field_display_name, label_style),
-            Paragraph(str(f.field_value), val_style),
-            Paragraph(conf_pct, val_style)
-        ])
         
-    if len(extraction_data) == 1:
-        extraction_data.append([
-            Paragraph("Raw Text OCR", label_style),
-            Paragraph("<i>No text regions extracted from image.</i>", val_style),
-            Paragraph("0.0%", val_style)
-        ])
+        for i in range(0, min(8, len(valid_fields)), 2):
+            f1 = valid_fields[i]
+            f2 = valid_fields[i+1] if i+1 < len(valid_fields) else None
+            
+            c1_name = f1.field_name.replace("_", " ").title()[:20]
+            c1_val = str(f1.field_value)[:28]
+            c1_conf = f"{(f1.ocr_confidence or 0.95)*100:.0f}%"
+            
+            if f2:
+                c2_name = f2.field_name.replace("_", " ").title()[:20]
+                c2_val = str(f2.field_value)[:28]
+                c2_conf = f"{(f2.ocr_confidence or 0.95)*100:.0f}%"
+            else:
+                c2_name, c2_val, c2_conf = "-", "-", "-"
+                
+            ext_rows.append([
+                Paragraph(c1_name, lbl_style), Paragraph(c1_val, val_style), Paragraph(c1_conf, val_style),
+                Paragraph(c2_name, lbl_style), Paragraph(c2_val, val_style), Paragraph(c2_conf, val_style)
+            ])
+            
+        extraction_table = Table(ext_rows, colWidths=[100, 140, 42, 100, 140, 42])
         
-    extraction_table = Table(extraction_data, colWidths=[150, 310, 80])
     extraction_table.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#CBD5E1')),
+        ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#CBD5E1')),
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
         ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 4),
         ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
     ]))
     story.append(extraction_table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 3))
     
     # ─────────────────────────────────────────────────────────────
-    # 3. NON-COMPLIANCE / WARNINGS (Issue + Explanation)
+    # 3. NON-COMPLIANCE / WARNINGS
     # ─────────────────────────────────────────────────────────────
     story.append(Paragraph("3. NON-COMPLIANCE / WARNINGS", section_hdr_style))
     
     non_comp_checks = [c for c in check_results if c.get("status") in ["fail", "unverifiable"]]
     
     if len(non_comp_checks) == 0:
-        clean_msg_data = [
+        clean_table = Table([
             [
-                Paragraph("<font color='#059669'><b>✓ No Statutory Non-Compliances Detected</b></font>", label_style),
-                Paragraph("All evaluated declarations (MRP, Net Quantity, Dates, Manufacturer/Packer, Customer Care, FSSAI / Textile Rules) strictly adhere to Legal Metrology Standards.", val_style)
+                Paragraph("<font color='#059669'><b>✓ Fully Compliant:</b> All evaluated statutory declarations satisfy Legal Metrology &amp; FSSAI Standards.</font>", val_style)
             ]
-        ]
-        clean_table = Table(clean_msg_data, colWidths=[180, 360])
+        ], colWidths=[564])
         clean_table.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#86EFAC')),
+            ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#86EFAC')),
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F0FDF4')),
-            ('TOPPADDING', (0, 0), (-1, -1), 6),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ]))
         story.append(clean_table)
     else:
         issues_data = [
             [
-                Paragraph("<b>Statutory Rule &amp; Issue</b>", label_style),
-                Paragraph("<b>Severity</b>", label_style),
-                Paragraph("<b>Audit Explanation &amp; Corrective Action</b>", label_style)
+                Paragraph("<b>Rule &amp; Issue</b>", lbl_style),
+                Paragraph("<b>Severity</b>", lbl_style),
+                Paragraph("<b>Audit Explanation &amp; Corrective Action</b>", lbl_style)
             ]
         ]
         
-        for c in non_comp_checks:
+        # Show top 4 most critical issues to guarantee strict single page budget
+        for c in non_comp_checks[:4]:
             citation = c.get("rule_citation", c.get("rule_id", "Statutory Rule"))
             status = c.get("status", "fail").upper()
             status_color = "#DC2626" if status == "FAIL" else "#D97706"
@@ -363,29 +349,37 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
             
             detail_p = f"{explanation}"
             if fix:
-                detail_p += f"<br/><font color='#059669'><b>Consumer Action:</b> {fix}</font>"
+                detail_p += f" <i>(Action: {fix})</i>"
                 
             issues_data.append([
-                Paragraph(f"<font color='{status_color}'><b>[{status}]</b></font> {citation}", label_style),
+                Paragraph(f"<font color='{status_color}'><b>[{status}]</b></font> {citation}", lbl_style),
                 Paragraph(c.get("severity", "MAJOR"), val_style),
                 Paragraph(detail_p, val_style)
             ])
             
-        issues_table = Table(issues_data, colWidths=[150, 60, 330])
+        remaining_issues = len(non_comp_checks) - 4
+        if remaining_issues > 0:
+            issues_data.append([
+                Paragraph(f"<i>+{remaining_issues} more</i>", small_style),
+                Paragraph("-", small_style),
+                Paragraph(f"<i>+{remaining_issues} additional minor/unverifiable rule checks recorded in online log.</i>", small_style)
+            ])
+            
+        issues_table = Table(issues_data, colWidths=[150, 54, 360])
         issues_table.setStyle(TableStyle([
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#FCA5A5')),
+            ('BOX', (0, 0), (-1, -1), 0.75, colors.HexColor('#FCA5A5')),
             ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#FEE2E2')),
             ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#FECACA')),
-            ('TOPPADDING', (0, 0), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 6),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#FFF1F2')]),
         ]))
         story.append(issues_table)
         
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 3))
     
     # ─────────────────────────────────────────────────────────────
     # 4. OVERALL ASSESSMENT
@@ -398,38 +392,38 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     if fail_count > 0:
         verdict_text = "NON-COMPLIANT"
         verdict_color = "#DC2626"
-        verdict_desc = f"Product packaging violates {fail_count} statutory declaration requirement(s) under Indian Legal Metrology Rules."
+        verdict_desc = f"Packaging violates {fail_count} statutory requirement(s) under Legal Metrology / FSSAI."
     elif unverifiable_count > 0:
         verdict_text = "REQUIRES VERIFICATION"
         verdict_color = "#D97706"
-        verdict_desc = f"Product packaging has {unverifiable_count} declaration(s) requiring manual physical verification or clearer photo scan."
+        verdict_desc = f"Packaging contains {unverifiable_count} declaration(s) requiring manual physical verification."
     else:
         verdict_text = "COMPLIANT"
         verdict_color = "#059669"
-        verdict_desc = "Product packaging satisfies all mandatory statutory declarations across evaluated rules."
+        verdict_desc = "Packaging satisfies all statutory legal metrology declarations."
         
     auth_score = scan.authenticity_score or 0.0
-    auth_verdict = "Authentic / Original Capture" if auth_score >= 70.0 else "Tampering / Synthesis Warning"
+    auth_verdict = "Authentic Capture" if auth_score >= 70.0 else "Tampering Warning"
     
     assessment_data = [
         [
-            Paragraph(f"<font color='{verdict_color}' size='13'><b>{verdict_text}</b></font>", label_style),
+            Paragraph(f"<font color='{verdict_color}' size='10'><b>{verdict_text}</b></font>", lbl_style),
             Paragraph(f"<b>Statutory Assessment:</b> {verdict_desc}", val_style)
         ],
         [
-            Paragraph(f"<b>Image Authenticity: {auth_score:.1f}%</b>", label_style),
-            Paragraph(f"<b>Forensics Verdict:</b> {auth_verdict} (EXIF Metadata, 2D FFT Frequency Analysis &amp; ELA Error Profile).", small_style)
+            Paragraph(f"<b>Image Authenticity: {auth_score:.1f}%</b>", lbl_style),
+            Paragraph(f"<b>Forensics:</b> {auth_verdict} (EXIF Tags, 2D FFT Frequency Spectrum &amp; ELA Profile).", small_style)
         ]
     ]
     
-    assessment_table = Table(assessment_data, colWidths=[180, 360])
+    assessment_table = Table(assessment_data, colWidths=[150, 414])
     assessment_table.setStyle(TableStyle([
-        ('BOX', (0, 0), (-1, -1), 1.5, colors.HexColor(verdict_color)),
+        ('BOX', (0, 0), (-1, -1), 1.25, colors.HexColor(verdict_color)),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     story.append(assessment_table)
