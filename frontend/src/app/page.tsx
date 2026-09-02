@@ -304,10 +304,15 @@ export default function Dashboard() {
 
   const handleUrlSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputUrl) return;
+    if (!inputUrl || !inputUrl.trim()) return;
+
+    let cleanUrl = inputUrl.trim();
+    if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+      cleanUrl = "https://" + cleanUrl;
+    }
 
     const formData = new FormData();
-    formData.append("url", inputUrl);
+    formData.append("url", cleanUrl);
     formData.append("category", selectedCategory);
 
     await executeAudit("/api/scans/url", formData);
@@ -895,16 +900,15 @@ export default function Dashboard() {
               </h2>
               <form onSubmit={handleUrlSubmit} className="flex gap-2">
                 <input
-                  type="url"
-                  required
+                  type="text"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder="Amazon/Flipkart product URL..."
+                  placeholder="Amazon or Flipkart product URL..."
                   className="flex-1 px-3 py-2 rounded text-xs bg-[#0F0F0F] border border-[#262626] text-[#EDEDED] font-mono focus:border-[#10B981] focus:outline-none"
                 />
                 <button
                   type="submit"
-                  className="px-3 py-2 rounded text-xs bg-[#10B981] text-[#0A0A0A] font-mono font-bold hover:bg-[#059669]"
+                  className="px-3 py-2 rounded text-xs bg-[#10B981] text-[#0A0A0A] font-mono font-bold hover:bg-[#059669] transition"
                 >
                   Scrape
                 </button>
