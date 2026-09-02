@@ -5,7 +5,7 @@ from pydantic import Field
 class Settings(BaseSettings):
     # DB configuration
     DATABASE_URL: str = Field(
-        default="postgresql://postgres:Salina%402006@localhost:5432/postgres",
+        default="postgresql://postgres:SalinaTamboli@db.bjlfxcjsyqichrqjdyts.supabase.co:5432/postgres",
         description="Database URL for PostgreSQL connection"
     )
     
@@ -21,7 +21,11 @@ class Settings(BaseSettings):
     NOMINATIM_USER_AGENT: str = "PackAudit Legal Metrology Compliance Checker (prototype)"
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "backend", ".env"),
+            ".env"
+        ),
         env_file_encoding="utf-8",
         extra="ignore"
     )

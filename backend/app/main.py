@@ -6,7 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.core.config import settings
+from backend.app.core.database import engine, Base
+from backend.app.models import models
 from backend.app.api import scans, rules, auth
+
+# Automatically create tables in PostgreSQL on startup
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Database initialization warning: {e}")
 
 app = FastAPI(
     title="PackAudit API",
