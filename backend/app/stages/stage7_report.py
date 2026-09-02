@@ -407,12 +407,16 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     story.append(Spacer(1, 3))
     
     # ─────────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────────
     # 4. OVERALL ASSESSMENT
     # ─────────────────────────────────────────────────────────────
     story.append(Paragraph("4. OVERALL ASSESSMENT", section_hdr_style))
     
+    total_checks = len(check_results)
+    pass_count = sum(1 for c in check_results if c.get("status") in ["pass", "exempt"])
     fail_count = sum(1 for c in check_results if c.get("status") == "fail")
     unverifiable_count = sum(1 for c in check_results if c.get("status") == "unverifiable")
+    compliance_rate = (pass_count / max(1, total_checks)) * 100.0
     
     if fail_count > 0:
         verdict_text = "NON-COMPLIANT"
@@ -428,20 +432,20 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         verdict_desc = "Packaging satisfies all statutory legal metrology declarations."
         
     auth_score = scan.authenticity_score or 0.0
-    auth_verdict = "Authentic Capture" if auth_score >= 70.0 else "Tampering Warning"
+    auth_verdict = "Authentic Real Photo" if auth_score >= 70.0 else "Tampering / AI Risk Warning"
     
     assessment_data = [
         [
-            Paragraph(f"<font color='{verdict_color}' size='10'><b>{verdict_text}</b></font>", lbl_style),
-            Paragraph(f"<b>Statutory Assessment:</b> {verdict_desc}", val_style)
+            Paragraph(f"<font color='{verdict_color}' size='9.5'><b>{verdict_text}</b></font>", lbl_style),
+            Paragraph(f"<b>Statutory Compliance: {compliance_rate:.0f}% ({pass_count}/{total_checks} Rules Passed)</b><br/>{verdict_desc}", val_style)
         ],
         [
-            Paragraph(f"<b>Image Authenticity: {auth_score:.1f}%</b>", lbl_style),
-            Paragraph(f"<b>Forensics:</b> {auth_verdict} (EXIF Tags, 2D FFT Frequency Spectrum &amp; ELA Profile).", small_style)
+            Paragraph(f"<b>Photo Authenticity: {auth_score:.1f}%</b>", lbl_style),
+            Paragraph(f"<b>Image Forensics:</b> {auth_verdict} (EXIF Metadata Tags, 2D FFT Frequency Spectrum &amp; ELA Error Profile).", small_style)
         ]
     ]
     
-    assessment_table = Table(assessment_data, colWidths=[150, 414])
+    assessment_table = Table(assessment_data, colWidths=[140, 424])
     assessment_table.setStyle(TableStyle([
         ('BOX', (0, 0), (-1, -1), 1.25, colors.HexColor(verdict_color)),
         ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),

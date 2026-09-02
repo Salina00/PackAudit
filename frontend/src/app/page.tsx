@@ -1318,7 +1318,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* 4. OVERALL ASSESSMENT */}
-                <div className={`border rounded-lg p-5 space-y-3 ${verdictColorClass}`}>
+                <div className={`border rounded-lg p-5 space-y-4 ${verdictColorClass}`}>
                   <div className="flex items-center justify-between border-b border-current/20 pb-3">
                     <span className="font-bold tracking-wider uppercase text-[11px]">
                       4. OVERALL ASSESSMENT
@@ -1328,31 +1328,55 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 pt-1">
-                    <div>
-                      <span className="text-[11px] opacity-80 block">Statutory Audit Conclusion:</span>
-                      <p className="text-xs text-[#EDEDED] mt-1 leading-snug">
-                        {failedChecks.length > 0
-                          ? `Product packaging violates ${failedChecks.length} statutory requirement(s). Action or retailer clarification recommended.`
-                          : unverifiableChecks.length > 0
-                          ? `Product has ${unverifiableChecks.length} declaration(s) requiring manual verification.`
-                          : "Product packaging satisfies all evaluated statutory legal metrology declarations."}
-                      </p>
+                  <div className="grid grid-cols-3 gap-4 pt-1">
+                    {/* Metric 1: Statutory Rule Compliance % */}
+                    <div className="bg-[#0A0A0A]/40 p-3 rounded-lg border border-current/10 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-[#A3A3A3] block">
+                        Statutory Compliance Score:
+                      </span>
+                      <div className="text-base font-bold text-[#EDEDED]">
+                        {((((selectedScan.checks || []).filter((c) => c.status === 'pass' || c.status === 'exempt').length) / Math.max(1, (selectedScan.checks || []).length)) * 100).toFixed(0)}%
+                      </div>
+                      <span className="text-[10px] text-[#A3A3A3] block">
+                        {(selectedScan.checks || []).filter((c) => c.status === 'pass' || c.status === 'exempt').length}/{(selectedScan.checks || []).length} Legal Rules Passed
+                      </span>
                     </div>
 
-                    <div>
-                      <span className="text-[11px] opacity-80 block">Image Forensics &amp; Authenticity:</span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm font-bold text-[#EDEDED]">
-                          {selectedScan.authenticity_score.toFixed(1)}%
-                        </span>
-                        <span className="text-[11px] text-[#A3A3A3]">
-                          {selectedScan.authenticity_score >= 70.0
-                            ? "(Authentic Capture)"
-                            : "(Tampering Warning)"}
-                        </span>
+                    {/* Metric 2: Statutory Verdict & Conclusion */}
+                    <div className="bg-[#0A0A0A]/40 p-3 rounded-lg border border-current/10 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-[#A3A3A3] block">
+                        Statutory Verdict:
+                      </span>
+                      <div className="text-xs font-bold text-[#EDEDED] leading-tight">
+                        {failedChecks.length > 0
+                          ? `Violates ${failedChecks.length} Legal Metrology / FSSAI Rule(s)`
+                          : unverifiableChecks.length > 0
+                          ? `${unverifiableChecks.length} Rule(s) Require Physical Verification`
+                          : "100% Satisfies All Statutory Declarations"}
                       </div>
+                      <span className="text-[10px] text-[#A3A3A3] block">
+                        {failedChecks.length > 0 ? "Non-compliant packaging" : "Compliant retail packaging"}
+                      </span>
                     </div>
+
+                    {/* Metric 3: Image Forensic Authenticity % */}
+                    <div className="bg-[#0A0A0A]/40 p-3 rounded-lg border border-current/10 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-[#A3A3A3] block">
+                        Photo Forensic Authenticity:
+                      </span>
+                      <div className="text-base font-bold text-[#EDEDED]">
+                        {selectedScan.authenticity_score.toFixed(1)}%
+                      </div>
+                      <span className="text-[10px] text-[#10B981] block">
+                        {selectedScan.authenticity_score >= 70.0
+                          ? "✓ Genuine Real Photo (Not AI/Tampered)"
+                          : "⚠️ Tampering / AI-Generated Risk"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[#737373] bg-[#0A0A0A]/60 p-2.5 rounded border border-current/10 leading-relaxed font-mono">
+                    ℹ️ <b>How Verdicts Are Determined:</b> Compliance is evaluated against 25 statutory rules under the Legal Metrology Act &amp; FSSAI. If <b>any mandatory rule fails</b> (e.g. missing MRP suffix, missing allergen advisory, or non-metric quantity units), the packaging is marked <b>NON-COMPLIANT</b> regardless of how authentic the photo is. Photo Authenticity (e.g. {selectedScan.authenticity_score.toFixed(1)}%) independently verifies image integrity via EXIF, FFT, and ELA error forensics.
                   </div>
                 </div>
               </div>
