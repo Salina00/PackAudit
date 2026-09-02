@@ -359,15 +359,22 @@ def get_scan_history(db: Session = Depends(get_db)):
                 prod_name = f.field_value
                 break
                 
+        total_cnt = len(s.checks or [])
+        pass_cnt = sum(1 for c in (s.checks or []) if c.status in ["pass", "exempt"])
         fail_cnt = sum(1 for c in (s.checks or []) if c.status == "fail")
         unverif_cnt = sum(1 for c in (s.checks or []) if c.status == "unverifiable")
+        is_exempt = total_cnt > 0 and all(c.status == "exempt" for c in (s.checks or []))
         
-        if fail_cnt > 0:
-            status = "NON-COMPLIANT"
-        elif unverif_cnt > 0:
+        comp_rate = (pass_cnt / max(1, total_cnt)) * 100.0 if total_cnt > 0 else 100.0
+        
+        if is_exempt:
+            status = "EXEMPT"
+        elif comp_rate >= 85.0:
+            status = "COMPLIANT"
+        elif comp_rate >= 70.0:
             status = "WARNING"
         else:
-            status = "COMPLIANT"
+            status = "NON-COMPLIANT"
             
         results.append({
             "id": s.id,

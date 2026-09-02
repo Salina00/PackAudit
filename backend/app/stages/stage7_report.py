@@ -424,18 +424,18 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         verdict_text = "EXEMPT UNDER RULE 18"
         verdict_color = "#2563EB"
         verdict_desc = "Product category is legally exempt from pre-packaged retail declarations under Rule 18 of Legal Metrology Rules."
-    elif fail_count > 0:
-        verdict_text = "NON-COMPLIANT"
-        verdict_color = "#DC2626"
-        verdict_desc = f"Packaging violates {fail_count} statutory requirement(s) under Legal Metrology / FSSAI."
-    elif unverifiable_count > 0:
-        verdict_text = "REQUIRES VERIFICATION"
-        verdict_color = "#D97706"
-        verdict_desc = f"Packaging contains {unverifiable_count} declaration(s) requiring manual physical verification."
-    else:
+    elif compliance_rate >= 85.0:
         verdict_text = "COMPLIANT"
         verdict_color = "#059669"
-        verdict_desc = "Packaging satisfies all statutory legal metrology declarations."
+        verdict_desc = f"Packaging satisfies statutory declarations ({compliance_rate:.0f}% compliance rate)."
+    elif compliance_rate >= 70.0:
+        verdict_text = "REQUIRES VERIFICATION"
+        verdict_color = "#D97706"
+        verdict_desc = f"Packaging compliance rate is {compliance_rate:.0f}%. Contains {unverifiable_count} item(s) requiring manual physical verification."
+    else:
+        verdict_text = "NON-COMPLIANT"
+        verdict_color = "#DC2626"
+        verdict_desc = f"Packaging compliance rate is {compliance_rate:.0f}%. Violates {fail_count} statutory requirement(s) under Legal Metrology / FSSAI."
         
     auth_score = scan.authenticity_score or 0.0
     auth_verdict = "Authentic Real Photo" if auth_score >= 70.0 else "Tampering / AI Risk Warning"

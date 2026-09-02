@@ -661,21 +661,28 @@ export default function Dashboard() {
     }
   }
 
+  const totalChecks = (selectedScan?.checks || []).length;
+  const passedChecks = (selectedScan?.checks || []).filter((c) => c.status === "pass" || c.status === "exempt").length;
   const failedChecks = (selectedScan?.checks || []).filter((c) => c.status === "fail");
   const unverifiableChecks = (selectedScan?.checks || []).filter((c) => c.status === "unverifiable");
-  const isExempt = (selectedScan?.checks || []).length > 0 && (selectedScan?.checks || []).every((c) => c.status === "exempt");
+  const isExempt = totalChecks > 0 && (selectedScan?.checks || []).every((c) => c.status === "exempt");
+
+  const complianceScorePercent = totalChecks > 0 ? (passedChecks / totalChecks) * 100 : 100;
 
   let overallVerdict = "COMPLIANT";
   let verdictColorClass = "border-[#10B981] text-[#10B981] bg-[#10B981]/10";
   if (isExempt) {
     overallVerdict = "EXEMPT UNDER RULE 18";
     verdictColorClass = "border-[#3B82F6] text-[#3B82F6] bg-[#3B82F6]/10";
-  } else if (failedChecks.length > 0) {
-    overallVerdict = "NON-COMPLIANT";
-    verdictColorClass = "border-[#DC2626] text-[#EF4444] bg-[#DC2626]/10";
-  } else if (unverifiableChecks.length > 0) {
+  } else if (complianceScorePercent >= 85) {
+    overallVerdict = "COMPLIANT";
+    verdictColorClass = "border-[#10B981] text-[#10B981] bg-[#10B981]/10";
+  } else if (complianceScorePercent >= 70) {
     overallVerdict = "REQUIRES VERIFICATION";
     verdictColorClass = "border-[#F59E0B] text-[#F59E0B] bg-[#F59E0B]/10";
+  } else {
+    overallVerdict = "NON-COMPLIANT";
+    verdictColorClass = "border-[#DC2626] text-[#EF4444] bg-[#DC2626]/10";
   }
 
   const selectedImagePaths = (selectedScan?.image_path || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -1380,7 +1387,7 @@ export default function Dashboard() {
                   </div>
 
                   <div className="text-[10px] text-[#737373] bg-[#0A0A0A]/60 p-2.5 rounded border border-current/10 leading-relaxed font-mono">
-                    ℹ️ <b>How Verdicts Are Determined:</b> Compliance is evaluated against 25 statutory rules under the Legal Metrology Act &amp; FSSAI. If <b>any mandatory rule fails</b> (e.g. missing MRP suffix, missing allergen advisory, or non-metric quantity units), the packaging is marked <b>NON-COMPLIANT</b> regardless of how authentic the photo is. Photo Authenticity (e.g. {selectedScan.authenticity_score.toFixed(1)}%) independently verifies image integrity via EXIF, FFT, and ELA error forensics.
+                    ℹ️ <b>Compliance Verdict Threshold:</b> PackAudit evaluates packaging against 25 statutory rules. A compliance score of <b>≥ 85%</b> awards a <b>COMPLIANT</b> verdict, <b>70% - 84%</b> indicates <b>REQUIRES VERIFICATION</b>, and <b>&lt; 70%</b> is <b>NON-COMPLIANT</b>. Photo Authenticity ({selectedScan.authenticity_score.toFixed(1)}%) independently verifies image integrity against digital tampering via EXIF, 2D FFT, and ELA error forensics.
                   </div>
                 </div>
               </div>
