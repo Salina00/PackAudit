@@ -663,10 +663,14 @@ export default function Dashboard() {
 
   const failedChecks = (selectedScan?.checks || []).filter((c) => c.status === "fail");
   const unverifiableChecks = (selectedScan?.checks || []).filter((c) => c.status === "unverifiable");
+  const isExempt = (selectedScan?.checks || []).length > 0 && (selectedScan?.checks || []).every((c) => c.status === "exempt");
 
   let overallVerdict = "COMPLIANT";
   let verdictColorClass = "border-[#10B981] text-[#10B981] bg-[#10B981]/10";
-  if (failedChecks.length > 0) {
+  if (isExempt) {
+    overallVerdict = "EXEMPT UNDER RULE 18";
+    verdictColorClass = "border-[#3B82F6] text-[#3B82F6] bg-[#3B82F6]/10";
+  } else if (failedChecks.length > 0) {
     overallVerdict = "NON-COMPLIANT";
     verdictColorClass = "border-[#DC2626] text-[#EF4444] bg-[#DC2626]/10";
   } else if (unverifiableChecks.length > 0) {

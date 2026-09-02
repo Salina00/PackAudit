@@ -96,6 +96,80 @@ async def upload_and_scan_image(
             classifications.append(yolo_result["detected_class"])
             calibration_factors.append(yolo_result["calibration_factor_px_to_mm"])
             
+            if route_status == "invalid":
+                if os.path.exists(img_path):
+                    os.remove(img_path)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid scan target: detected '{yolo_result['detected_class']}'. Please scan a retail packaged commodity."
+                )
+                
+            elif route_status == "exempt":
+                # Short-circuit as EXEMPT under Rule 18 without calculating penalty scores
+                scan_id = str(uuid.uuid4())
+                exempt_class = yolo_result["detected_class"].replace("_", " ").title()
+                extracted_fields = {
+                    "generic_name": f"Exempted Commodity ({exempt_class})",
+                    "net_quantity": "Exempt under Rule 18",
+                    "mrp": "N/A (Exempt)",
+                    "country_of_origin": "India"
+                }
+                
+                check_results = [{
+                    "rule_id": "check_1",
+                    "rule_citation": "Rule 18 Exemption Pre-Check",
+                    "description": "Checks if product is exempt from pre-packaged commodity rules.",
+                    "severity": "CRITICAL",
+                    "fix_suggestion": "Exempt commodity. No mandatory packaging declarations required under Rule 18.",
+                    "status": "exempt",
+                    "explanation": f"Short-circuited under Rule 18. Product category '{exempt_class}' is legally exempt from pre-packaged retail declarations."
+                }]
+                for r_idx in range(2, 26):
+                    r_id = f"check_{r_idx}" if r_idx <= 12 else f"fssai_check_{r_idx-12}" if r_idx <= 18 else f"apparel_check_{r_idx-18}"
+                    check_results.append({
+                        "rule_id": r_id,
+                        "rule_citation": f"Statutory Check {r_idx}",
+                        "description": "Exempted check.",
+                        "severity": "INFO",
+                        "fix_suggestion": "",
+                        "status": "exempt",
+                        "explanation": "Short-circuited under Rule 18 statutory exemption."
+                    })
+                    
+                joined_img_paths = "/static/uploads/" + os.path.basename(img_path)
+                scan = save_scan_results_to_db(
+                    db=db,
+                    scan_id=scan_id,
+                    input_type="photo",
+                    image_path=joined_img_paths,
+                    authenticity_score=score,
+                    object_classification=yolo_result["detected_class"],
+                    extracted_fields=extracted_fields,
+                    check_results=check_results
+                )
+                
+                pdf_path = generate_pdf_report(scan, check_results)
+                report_url = f"/api/scans/{scan.id}/report"
+                
+                return {
+                    "id": scan.id,
+                    "created_at": scan.created_at,
+                    "input_type": scan.input_type,
+                    "image_path": scan.image_path,
+                    "authenticity_score": scan.authenticity_score,
+                    "object_classification": scan.object_classification,
+                    "fields": [
+                        {
+                            "field_name": k,
+                            "field_value": str(v),
+                            "ocr_confidence": 1.0
+                        } for k, v in extracted_fields.items()
+                    ],
+                    "checks": check_results,
+                    "authenticity_report": report,
+                    "report_pdf_url": report_url
+                }
+            
             # 3. OCR extraction
             ocr_reg, r_txt = perform_ocr(img_path)
             all_ocr_regions.extend(ocr_reg)

@@ -418,7 +418,13 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     unverifiable_count = sum(1 for c in check_results if c.get("status") == "unverifiable")
     compliance_rate = (pass_count / max(1, total_checks)) * 100.0
     
-    if fail_count > 0:
+    is_exempt = total_checks > 0 and all(c.get("status") == "exempt" for c in check_results)
+    
+    if is_exempt:
+        verdict_text = "EXEMPT UNDER RULE 18"
+        verdict_color = "#2563EB"
+        verdict_desc = "Product category is legally exempt from pre-packaged retail declarations under Rule 18 of Legal Metrology Rules."
+    elif fail_count > 0:
         verdict_text = "NON-COMPLIANT"
         verdict_color = "#DC2626"
         verdict_desc = f"Packaging violates {fail_count} statutory requirement(s) under Legal Metrology / FSSAI."
