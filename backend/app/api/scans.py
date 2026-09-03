@@ -86,10 +86,24 @@ async def upload_and_scan_image(
             img_path = save_uploaded_file(contents, u_file.filename or "upload.jpg")
             saved_image_paths.append(img_path)
             
-            # 1. Authenticity check
+            # 1. Authenticity check (EXIF, AI generation classifier, 2D FFT, ELA)
             score, report = authenticate_image(img_path)
             auth_scores.append(score)
             auth_reports.append(report)
+            
+            # AI Generation Hard-Stop: fake images are not allowed to reach OCR or rule engine
+            ai_gen = report.get("ai_generation", {})
+            if ai_gen.get("status") == "SUSPICIOUS_AI_GENERATED" and ai_gen.get("ai_generation_confidence", 0) >= 75.0:
+                for p in saved_image_paths:
+                    if os.path.exists(p):
+                        try:
+                            os.remove(p)
+                        except:
+                            pass
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"This image appears to be AI-generated or synthetic ({ai_gen.get('ai_generation_confidence', 99.0):.1f}% confidence). Please upload a real photo of the physical product."
+                )
             
             # 2. YOLO check
             route_status, yolo_result = classify_and_route_object(img_path)
@@ -274,6 +288,7 @@ def scan_listing_url(
         "is_authentic": True,
         "authenticity_score": 100.0,
         "exif": {"status": "bypassed", "details": "Digital e-commerce URL listing.", "exif_present": True, "editing_software_detected": False},
+        "ai_generation": {"status": "bypassed", "verdict_text": "Digital e-commerce listing (direct URL source).", "ai_generation_confidence": 0.0, "human_authenticity_confidence": 100.0, "model_name": "Bypassed for URL listing"},
         "fft": {"status": "bypassed", "details": "Bypassed for digital URL listings.", "fft_variance": 0.0},
         "ela": {"status": "bypassed", "details": "Bypassed for digital URL listings.", "ela_variance": 0.0, "ela_image_url": None}
     }

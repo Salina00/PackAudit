@@ -63,23 +63,39 @@ STATIC_FIX_SUGGESTIONS = {
     "apparel_check_7": "Include an explicit Country of Origin declaration (e.g. 'Country of Origin: India' or 'Made in India') on the garment label."
 }
 
-def get_rules_definitions(db: Session) -> Dict[str, Dict[str, Any]]:
+def get_rules_definitions(db: Optional[Session] = None) -> Dict[str, Dict[str, Any]]:
     """
-    Fetches rule definitions from DB and caches them in memory.
+    Fetches rule definitions from DB and caches them in memory, with fallback to static rules.
     """
     global _rules_cache
     if not _rules_cache:
-        rules = db.query(RuleDefinition).all()
-        for r in rules:
-            _rules_cache[r.rule_id] = {
-                "rule_citation": r.rule_citation,
-                "description": r.description,
-                "check_type": r.check_type,
-                "validation_logic": r.validation_logic or {},
-                "severity": r.severity or "MAJOR",
-                "fix_suggestion": r.fix_suggestion or STATIC_FIX_SUGGESTIONS.get(r.rule_id, "")
-            }
-        print(f"Rule engine: Cached {len(_rules_cache)} rules.")
+        if db:
+            try:
+                rules = db.query(RuleDefinition).all()
+                for r in rules:
+                    _rules_cache[r.rule_id] = {
+                        "rule_citation": r.rule_citation,
+                        "description": r.description,
+                        "check_type": r.check_type,
+                        "validation_logic": r.validation_logic or {},
+                        "severity": r.severity or "MAJOR",
+                        "fix_suggestion": r.fix_suggestion or STATIC_FIX_SUGGESTIONS.get(r.rule_id, "")
+                    }
+                print(f"Rule engine: Cached {len(_rules_cache)} rules from DB.")
+            except Exception as e:
+                print(f"Notice: Using static rules fallback ({e}).")
+                
+        if not _rules_cache:
+            # Populate from static definitions
+            for r_id, fix_sug in STATIC_FIX_SUGGESTIONS.items():
+                _rules_cache[r_id] = {
+                    "rule_citation": f"Statutory Rule {r_id.upper()}",
+                    "description": f"Standard statutory requirement for {r_id}",
+                    "check_type": "statutory",
+                    "validation_logic": {},
+                    "severity": "CRITICAL" if r_id in ["check_2", "check_6", "fssai_check_1"] else "MAJOR",
+                    "fix_suggestion": fix_sug
+                }
     return _rules_cache
 
 def parse_net_qty_numeric(qty_str: Optional[str]) -> Tuple[Optional[float], Optional[str]]:
@@ -140,21 +156,24 @@ def verify_address_nominatim(address: str) -> Tuple[bool, str]:
     except Exception as e:
         return True, f"Nominatim API geocode offline/timeout. Address bypass enabled. (Error: {str(e)})"
 
-def check_address_with_cache(address: str, company: Optional[str], db: Session) -> Tuple[bool, str]:
+def check_address_with_cache(address: str, company: Optional[str], db: Optional[Session] = None) -> Tuple[bool, str]:
     if not address:
         return False, "Address is missing."
         
-    if company:
-        cached_mfgs = db.query(ManufacturerCache).all()
-        best_mfg = None
-        best_ratio = 0.0
-        
-        for mfg in cached_mfgs:
-            names = [mfg.company_name] + (mfg.aliases or [])
-            match = process.extractOne(company.lower(), [n.lower() for n in names], scorer=fuzz.ratio)
-            if match and match[1] > best_ratio:
-                best_ratio = match[1]
-                best_mfg = mfg
+    best_mfg = None
+    best_ratio = 0.0
+    
+    if company and db:
+        try:
+            cached_mfgs = db.query(ManufacturerCache).all()
+            for mfg in cached_mfgs:
+                names = [mfg.company_name] + (mfg.aliases or [])
+                match = process.extractOne(company.lower(), [n.lower() for n in names], scorer=fuzz.ratio)
+                if match and match[1] > best_ratio:
+                    best_ratio = match[1]
+                    best_mfg = mfg
+        except Exception:
+            pass
                 
         if best_mfg and best_ratio > 75.0:
             pincode_match = PINCODE_REGEX.search(address)

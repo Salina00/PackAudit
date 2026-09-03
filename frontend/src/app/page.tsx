@@ -39,9 +39,19 @@ interface ScanDetail {
   checks: Check[];
   authenticity_report?: {
     is_authentic: boolean;
-    exif: { status: string; details: string; exif_present: boolean; editing_software_detected: boolean };
-    fft: { status: string; details: string; fft_variance: number };
-    ela: { status: string; details: string; ela_variance: number; ela_image_url: string | null };
+    authenticity_score?: number;
+    ai_generation?: {
+      status: string;
+      verdict_text: string;
+      ai_generation_confidence: number;
+      human_authenticity_confidence: number;
+      model_name: string;
+      fft_variance?: number;
+      fft_flagged?: boolean;
+    };
+    exif?: { status: string; details: string; exif_present: boolean; editing_software_detected: boolean };
+    fft?: { status: string; details: string; fft_variance: number };
+    ela?: { status: string; details: string; ela_variance: number; ela_image_url: string | null };
   };
   report_pdf_url: string;
 }
@@ -246,8 +256,9 @@ export default function Dashboard() {
   // Set scanning steps labels
   const PIPELINE_STEPS = [
     "Uploading target media (front & back)...",
-    "Analyzing EXIF & image headers...",
-    "Computing FFT variance & ELA compression error maps...",
+    "Inspecting EXIF camera headers & device metadata...",
+    "Evaluating AI-Generation classifier (Vision Transformer & FFT)...",
+    "Computing Error Level Analysis (ELA) compression maps...",
     "Evaluating package classifier (YOLOv8)...",
     `Routing to ${selectedCategory.toUpperCase()} regulatory engine...`,
     "Running multilingual OCR (English & Hindi)...",
@@ -1331,6 +1342,117 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+
+                {/* 3.5. IMAGE FORENSICS & AI AUTHENTICITY DETAILS */}
+                {selectedScan.authenticity_report && (
+                  <div className="border border-[#262626] bg-[#0F0F0F] rounded-lg overflow-hidden">
+                    <div className="p-3 bg-[#151515] border-b border-[#262626] font-bold text-[#EDEDED] flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <span>🛡️ IMAGE FORENSICS &amp; AI AUTHENTICITY</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold ${
+                          selectedScan.authenticity_score >= 70.0
+                            ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30"
+                            : "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30"
+                        }`}>
+                          {selectedScan.authenticity_score.toFixed(1)}% Forensic Score
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-[#737373] font-normal font-mono">
+                        4-Pillar Pipeline
+                      </span>
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                      {/* AI Generation Check Row */}
+                      {selectedScan.authenticity_report.ai_generation && (
+                        <div className="p-3.5 rounded-lg border border-[#262626] bg-[#141414] flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-[#EDEDED]">
+                                AI Generation Check (Vision Transformer &amp; 2D FFT)
+                              </span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${
+                                selectedScan.authenticity_report.ai_generation.status === "LIKELY_AUTHENTIC"
+                                  ? "bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30"
+                                  : selectedScan.authenticity_report.ai_generation.status === "SUSPICIOUS_AI_GENERATED"
+                                  ? "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30"
+                                  : "bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30"
+                              }`}>
+                                {selectedScan.authenticity_report.ai_generation.status === "LIKELY_AUTHENTIC"
+                                  ? "✓ Likely Authentic"
+                                  : selectedScan.authenticity_report.ai_generation.status === "SUSPICIOUS_AI_GENERATED"
+                                  ? "⚠️ AI-Generated / Synthetic"
+                                  : selectedScan.authenticity_report.ai_generation.status === "bypassed"
+                                  ? "ℹ️ Bypassed (E-Commerce URL)"
+                                  : "❓ Unverified (Manual Review)"}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-[#A3A3A3]">
+                              {selectedScan.authenticity_report.ai_generation.verdict_text}
+                            </p>
+                          </div>
+                          <div className="md:text-right font-mono text-xs shrink-0">
+                            <span className="text-[#737373] block text-[10px]">Classifier Confidence:</span>
+                            <span className={`font-bold ${
+                              selectedScan.authenticity_report.ai_generation.status === "LIKELY_AUTHENTIC" ? "text-[#10B981]" : "text-[#EF4444]"
+                            }`}>
+                              {selectedScan.authenticity_report.ai_generation.status === "LIKELY_AUTHENTIC"
+                                ? `${selectedScan.authenticity_report.ai_generation.human_authenticity_confidence.toFixed(1)}% Real Photo`
+                                : `${selectedScan.authenticity_report.ai_generation.ai_generation_confidence.toFixed(1)}% Synthetic`}
+                            </span>
+                            <span className="text-[9px] text-[#737373] block">
+                              {selectedScan.authenticity_report.ai_generation.model_name}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3-Column Forensic Breakdown */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+                        {/* 1. EXIF */}
+                        <div className="p-2.5 rounded bg-[#141414] border border-[#262626] space-y-1 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-[#EDEDED] text-[11px]">1. EXIF Metadata</span>
+                            <span className={`text-[10px] font-mono ${
+                              selectedScan.authenticity_report.exif?.status === 'PASS' ? 'text-[#10B981]' : 'text-[#F59E0B]'
+                            }`}>
+                              {selectedScan.authenticity_report.exif?.exif_present ? "Present" : "Stripped/Clean"}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#A3A3A3] line-clamp-2">
+                            {selectedScan.authenticity_report.exif?.details || "EXIF metadata verified"}
+                          </p>
+                        </div>
+
+                        {/* 2. 2D FFT Frequency */}
+                        <div className="p-2.5 rounded bg-[#141414] border border-[#262626] space-y-1 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-[#EDEDED] text-[11px]">2. 2D Fourier Spectrum</span>
+                            <span className="text-[10px] text-[#10B981] font-mono">
+                              {selectedScan.authenticity_report.fft?.fft_variance ? `${selectedScan.authenticity_report.fft.fft_variance}% HF` : "Natural"}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#A3A3A3] line-clamp-2">
+                            {selectedScan.authenticity_report.fft?.details || "Power spectrum decay verified"}
+                          </p>
+                        </div>
+
+                        {/* 3. ELA Compression */}
+                        <div className="p-2.5 rounded bg-[#141414] border border-[#262626] space-y-1 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-[#EDEDED] text-[11px]">3. Error Level (ELA)</span>
+                            <span className="text-[10px] text-[#10B981] font-mono">
+                              {selectedScan.authenticity_report.ela?.ela_variance ? `Var: ${selectedScan.authenticity_report.ela.ela_variance}` : "Normal"}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-[#A3A3A3] line-clamp-2">
+                            {selectedScan.authenticity_report.ela?.details || "Compression profile normal"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* 4. OVERALL ASSESSMENT */}
                 <div className={`border rounded-lg p-5 space-y-4 ${verdictColorClass}`}>

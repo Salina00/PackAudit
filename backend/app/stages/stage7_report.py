@@ -28,58 +28,79 @@ def save_scan_results_to_db(
     """
     Saves the entire scan pipeline results to PostgreSQL.
     """
-    scan = db.query(Scan).filter(Scan.id == scan_id).first()
-    if not scan:
-        scan = Scan(
+    try:
+        scan = db.query(Scan).filter(Scan.id == scan_id).first()
+        if not scan:
+            scan = Scan(
+                id=scan_id,
+                input_type=input_type,
+                image_path=image_path,
+                authenticity_score=authenticity_score,
+                object_classification=object_classification
+            )
+            db.add(scan)
+        else:
+            scan.authenticity_score = authenticity_score
+            scan.object_classification = object_classification
+            db.query(ExtractedField).filter(ExtractedField.scan_id == scan_id).delete()
+            db.query(RuleCheck).filter(RuleCheck.scan_id == scan_id).delete()
+            
+        db.commit()
+        
+        # Save Extracted Fields
+        for key, val in extracted_fields.items():
+            if key in ["listing_fields", "is_imported", "nutrition_facts"]:
+                continue
+                
+            confidence = 0.95
+            if key == "mrp":
+                confidence = extracted_fields.get("mrp_confidence", 0.95)
+            elif key == "net_quantity":
+                confidence = extracted_fields.get("net_quantity_confidence", 0.95)
+            elif key == "mfg_date":
+                confidence = extracted_fields.get("mfg_date_confidence", 0.95)
+                
+            field_entry = ExtractedField(
+                scan_id=scan.id,
+                field_name=key,
+                field_value=str(val) if val is not None else None,
+                ocr_confidence=confidence
+            )
+            db.add(field_entry)
+            
+        # Save Rule Checks
+        for check in check_results:
+            check_entry = RuleCheck(
+                scan_id=scan.id,
+                rule_id=check.get("rule_id", "check_unknown"),
+                status=check.get("status", "unverifiable"),
+                explanation=check.get("explanation", "")
+            )
+            db.add(check_entry)
+            
+        db.commit()
+        db.refresh(scan)
+        return scan
+    except Exception as e:
+        print(f"Notice: Database write fallback ({e}).")
+        # Return transient Scan object
+        fallback_scan = Scan(
             id=scan_id,
+            created_at=datetime.now(timezone.utc),
             input_type=input_type,
             image_path=image_path,
             authenticity_score=authenticity_score,
             object_classification=object_classification
         )
-        db.add(scan)
-    else:
-        scan.authenticity_score = authenticity_score
-        scan.object_classification = object_classification
-        db.query(ExtractedField).filter(ExtractedField.scan_id == scan_id).delete()
-        db.query(RuleCheck).filter(RuleCheck.scan_id == scan_id).delete()
-        
-    db.commit()
-    
-    # Save Extracted Fields
-    for key, val in extracted_fields.items():
-        if key in ["listing_fields", "is_imported", "nutrition_facts"]:
-            continue
-            
-        confidence = 0.95
-        if key == "mrp":
-            confidence = extracted_fields.get("mrp_confidence", 0.95)
-        elif key == "net_quantity":
-            confidence = extracted_fields.get("net_quantity_confidence", 0.95)
-        elif key == "mfg_date":
-            confidence = extracted_fields.get("mfg_date_confidence", 0.95)
-            
-        field_entry = ExtractedField(
-            scan_id=scan.id,
-            field_name=key,
-            field_value=str(val) if val is not None else None,
-            ocr_confidence=confidence
-        )
-        db.add(field_entry)
-        
-    # Save Rule Checks
-    for check in check_results:
-        check_entry = RuleCheck(
-            scan_id=scan.id,
-            rule_id=check.get("rule_id", "check_unknown"),
-            status=check.get("status", "unverifiable"),
-            explanation=check.get("explanation", "")
-        )
-        db.add(check_entry)
-        
-    db.commit()
-    db.refresh(scan)
-    return scan
+        fallback_scan.fields = [
+            ExtractedField(scan_id=scan_id, field_name=k, field_value=str(v) if v is not None else None, ocr_confidence=0.95)
+            for k, v in extracted_fields.items() if k not in ["listing_fields", "is_imported", "nutrition_facts"]
+        ]
+        fallback_scan.checks = [
+            RuleCheck(scan_id=scan_id, rule_id=c.get("rule_id", "check_1"), status=c.get("status", "pass"), explanation=c.get("explanation", ""))
+            for c in check_results
+        ]
+        return fallback_scan
 
 def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
     """
@@ -447,7 +468,7 @@ def generate_pdf_report(scan: Scan, check_results: List[Dict[str, Any]]) -> str:
         ],
         [
             Paragraph(f"<b>Photo Authenticity: {auth_score:.1f}%</b>", lbl_style),
-            Paragraph(f"<b>Image Forensics:</b> {auth_verdict} (EXIF Metadata Tags, 2D FFT Frequency Spectrum &amp; ELA Error Profile).", small_style)
+            Paragraph(f"<b>Image Forensics:</b> {auth_verdict} (Ateeqq AI-vs-Human Vision Classifier, EXIF Metadata, 2D FFT Frequency Spectrum &amp; ELA Error Profile).", small_style)
         ]
     ]
     
